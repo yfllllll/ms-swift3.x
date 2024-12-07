@@ -32,5 +32,4 @@ def get_main(args_class: Type[_TArgsClass],
         result = llm_x(args, **kwargs)
         logger.info(f'End time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         return result
-
     return x_main
