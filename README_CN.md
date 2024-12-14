@@ -45,6 +45,9 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 <p align="center">
         <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
 </p>
+<p align="center">
+        <a href="https://swift2x-en.readthedocs.io/en/latest/">Swift2.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift2x.readthedocs.io/zh-cn/latest/">Swift2.x中文文档</a> &nbsp
+</p>
 
 ## ☎ 用户群
 
@@ -56,7 +59,15 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
-- 2024.10.09: 支持 llm 和 mllm 的 reward modeling 训练, 支持 llm 的 PPO 训练. 参考[文档](docs/source/LLM/人类偏好对齐训练文档.md)
+- 2024.12.09: 支持emu3-gen的部署. 使用`swift infer --model BAAI/Emu3-Gen --stream False --use_chat_template False --top_k 2048 --max_new_tokens 40960`进行体验.
+- 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
+- 2024.11.29: 支持glm-edge和glm-edge-v系列模型. 使用`swift infer --model_type glm-edge-v-2b`进行体验.
+- 2024.11.28: 支持模型qwq-32b-preview, marco-o1, 支持数据集open-o1. 使用`swift infer --model_type qwq-32b-preview`进行体验.
+- 2024.11.12: 支持qwen2.5-coder系列模型0.5b, 3b, 14b, 32b的训练到部署. 使用`swift infer --model_type qwen2_5-coder-3b-instruct`进行体验.
+- 2024.10.26: 支持aya-expanse系列模型的训练到部署. 使用`swift infer --model_type aya-expanse-32b`进行体验.
+- 2024.10.23: 支持emu3-chat的训练到部署. 使用`swift infer --model_type emu3-chat`进行体验.
+- 2024.10.22: 支持molmo系列模型的训练到部署. 使用`swift infer --model_type molmo-7b-d`进行体验.
+- 2024.10.09: 支持 llm 和 mllm 的 reward modeling 训练, 支持 llm 的 PPO 训练. 参考[文档](docs/source/Instruction/人类偏好对齐训练文档.md)
 - 2024.10.09: 支持ovis1.6-gemma2的训练到部署. 使用`swift infer --model_type ovis1_6-gemma2-9b`进行体验.
 - 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
 - 2024.09.26: 支持llama3.2系列模型的训练到部署. 使用`swift infer --model_type llama3_2-1b-instruct`进行体验.
@@ -106,7 +117,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 🔥2024.06.28: 支持**Florence**系列模型: 可以查看[Florence最佳实践](docs/source/Multi-Modal/florence最佳实践.md).
 - 🔥2024.06.28: 支持**Gemma2**系列模型: gemma2-9b, gemma2-9b-instruct, gemma2-27b, gemma2-27b-instruct.
 - 🔥2024.06.18: 支持**DeepSeek-Coder-v2**系列模型! 使用model_type`deepseek-coder-v2-instruct`和`deepseek-coder-v2-lite-instruct`来开启训练和推理.
-- 🔥2024.06.16: 支持**KTO**和**CPO**训练，使用`swift rlhf --rlhf_type kto`和`swift rlhf --rlhf_type cpo`来开始训练，可以参考[文档](./docs/source/LLM/人类偏好对齐训练文档.md).
+- 🔥2024.06.16: 支持**KTO**和**CPO**训练，使用`swift rlhf --rlhf_type kto`和`swift rlhf --rlhf_type cpo`来开始训练，可以参考[文档](docs/source/Instruction/人类偏好对齐训练文档.md).
 - 2024.06.11: 支持符合OpenAI接口的工具调用Agent部署, 可以查看[Agent部署最佳实践](docs/source/LLM/Agent部署最佳实践.md).
 - 🔥2024.06.07: 支持**Qwen2**系列LLM, 包括0.5B、1.5B、7B、72B的Base和Instruct模型, 以及对应的gptq-int4、gptq-int8、awq-int4量化版本. 使用双卡80GiB A100对Qwen2-72B-Instruct进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
 - 🔥2024.06.05: 支持glm4系列大模型和glm4v-9b-chat多模态大模型, 可以查看[glm4v最佳实践](docs/source/Multi-Modal/glm4v最佳实践.md).
@@ -246,8 +257,8 @@ pip install ms-swift -U
 - 方法2：通过源代码安装SWIFT（方便运行训练推理脚本），请运行以下命令：
 
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
 pip install -e '.[llm]'
 ```
 
@@ -606,6 +617,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | dbrx                                                                                            | [databricks](https://github.com/databricks/dbrx)                          | 英文       | 132B                | base模型<br>chat模型                          |
 | mengzi3                                                                                         | [Langboat](https://github.com/Langboat/Mengzi3)                           | 中文<br>英文 | 13B                 | base模型                                    |
 | c4ai-command-r                                                                                  | [c4ai](https://cohere.com/command)                                        | 多语种      | 35B-104B            | chat模型                                    |
+| aya-expanse                                                                                  | [aya](https://cohere.com/research/aya)                                        | 多语种      | 8B-32B            | chat模型                                    |
 | WizardLM2                                                                                       | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM)                     | 多语种      | 7B-8x22B<br>包含量化版本  | chat模型<br>MoE模型                           |
 | Atom                                                                                            | [Atom](https://github.com/LlamaFamily/Llama-Chinese)                      | 中文       | 7B                  | base模型<br>chat模型                          |
 | Chinese-LLaMA-Alpaca-2                                                                          | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文       | 1.3B-13B            | base模型<br>chat模型<br>长文本模型                 |
@@ -622,7 +634,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llama3.2-Vision              | [Llama3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf)                | 英文       | 11B-90B      | base模型<br>chat模型 |
 | YI-VL                                                   | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B           | chat模型           |
 | XComposer2<br>XComposer2.5                              | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)            | 中文<br>英文 | 7B               | chat模型           |
-| DeepSeek-VL                                             | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
+| DeepSeek-VL<br>Deepseek-Janus                                | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2.5<br>MiniCPM-V-2.6               | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM)                  | 中文<br>英文 | 3B-9B            | chat模型           |
 | CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)                         | 中文<br>英文 | 9B-19B           | chat模型           |
 | Llava-HF               | [Llava-HF系列模型](https://huggingface.co/llava-hf)                          | 英文       | 0.5B-110B           | chat模型           |
@@ -639,7 +651,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | 英文       | 8B      | chat模型       |
 | Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | 英文       | 9B      | chat模型       |
 | Molmo              | [Molmo系列模型](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | 英文       | 1B-72B      | chat模型       |
-
+| Emu3-Chat              | [Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)                | 英文       | 8B      | chat 模型       |
 
 #### 扩散模型
 
