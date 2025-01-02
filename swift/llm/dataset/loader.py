@@ -452,7 +452,7 @@ def load_dataset(
     for dataset in datasets:
         dataset_syntax = DatasetSyntax.parse(dataset)
         dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
-        load_function = dataset_meta.load_function
+        load_function = dataset_meta.load_function     
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
         train_dataset, val_dataset = DatasetLoader.post_process(
             train_dataset,

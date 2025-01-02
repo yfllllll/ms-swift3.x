@@ -173,7 +173,7 @@ class LazyLLMDataset(Dataset):
             else:
                 i = self._idx_list[self._idx]
                 self._idx = (self._idx + 1) % len(self.dataset)
-            data = self.dataset[i]
+            data = self.dataset[i] #
             try:
                 return self.encode_func(data)
             except Exception:

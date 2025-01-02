@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import os
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -15,7 +16,7 @@ from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
+standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects', 'bbox', 'yolo', 'class_names']
 
 logger = get_logger()
 
@@ -445,6 +446,100 @@ class MessagesPreprocessor(RowPreprocessor):
         return row
 
 
+class YoloPreprocessor(RowPreprocessor):
+    def __init__(self,
+                 *,
+                 columns_mapping: Optional[Dict[str, str]] = None,
+                 dataset_sample: Optional[int] = None,
+                 random_state: Optional[np.random.RandomState] = None,
+                 traceback_limit: int = 10,
+                 batch_size: int = 100,
+                 num_proc: int = 1) -> None:
+        # 调用父类的初始化方法
+        super().__init__(columns_mapping=columns_mapping,
+                        dataset_sample=dataset_sample,
+                        random_state=random_state,
+                        traceback_limit=traceback_limit)
+        self.batch_size = batch_size
+        self.num_proc = num_proc
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        # 复制输入的行数据，避免修改原始数据
+        processed_row = dict(row)
+        # 处理 image 字段
+        self._cast_images(processed_row)
+        image_path = processed_row.get('image')
+        if image_path:
+            if not os.path.exists(image_path):
+                # 如果图像文件路径不存在，返回 None，该数据将被过滤
+                return None
+        # 处理 label 字段
+        label_path = processed_row.get('label_path')
+        if label_path:
+            if os.path.exists(label_path):
+                # 这里可以添加对标签文件的处理逻辑，例如读取标签文件内容
+                # 假设标签文件是一个文本文件，每行包含一个标签
+                # 每个标签格式为: 'label_id center_x center_y width height'
+                with open(label_path, 'r') as label_file:
+                    labels = label_file.readlines()
+                bboxes = []
+                for label in labels:
+                    parts = label.strip().split()
+                    label_id = int(parts[0])
+                    classname = processed_row['class_names'][label_id]
+                    yolo_bbox = [float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])]
+                    bboxes.append([classname, yolo_bbox])
+                # 将 bbox 转换为字符串以便兼容 pyarrow
+                processed_row['bbox'] = [f"{bbox[0]}:{','.join(map(str, bbox[1]))}" for bbox in bboxes]
+            else:
+                # 如果标签文件路径不存在，返回 None，该数据将被过滤
+                return None
+        
+        # 添加一个标记，用于后期处理
+        processed_row['yolo'] = 1 
+        return processed_row
+
+    def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
+        # 调用父类的 prepare_dataset 方法
+        dataset = super().prepare_dataset(dataset)
+        # 可以添加其他对数据集的准备工作，例如过滤无效数据
+        return dataset
+
+    def batched_preprocess(self, batched_row: Dict[str, List[Any]], *, strict: bool) -> Dict[str, List[Any]]:
+        processed_batched_row = {}
+        for key in batched_row:
+            processed_batched_row[key] = []
+        for i in range(len(batched_row[list(batched_row.keys())[0]])):
+            row = {k: v[i] for k, v in batched_row.items()}
+            processed_row = self.preprocess(row)
+            if processed_row is not None:
+                for key in processed_row:
+                    if key not in processed_batched_row:
+                        processed_batched_row[key] = []
+                    processed_batched_row[key].append(processed_row[key])
+        return processed_batched_row
+
+    def __call__(self, dataset: HfDataset, **kwargs) -> HfDataset:
+        # 重写 __call__ 方法，绕过父类的 __call__ 方法
+        # 首先对数据集进行安全的列重命名
+        dataset = self.safe_rename_columns(dataset, self.columns_mapping)
+        # 调用 prepare_dataset 进行数据集准备
+        dataset = self.prepare_dataset(dataset)
+        dataset = self._cast_pil_image(dataset)
+        map_kwargs = {}
+        if self.num_proc > 1:
+            map_kwargs['num_proc'] = self.num_proc
+        # 对数据集的每一批次调用 batched_preprocess 方法进行处理
+        dataset_mapped = dataset.map(
+            self.batched_preprocess,
+            batched=True,
+            batch_size=self.batch_size,
+            fn_kwargs={'strict': kwargs.get('strict', False)},
+            remove_columns=list(dataset.features.keys()),
+            **map_kwargs
+        )
+        return dataset_mapped
+
 class AutoPreprocessor:
 
     def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
@@ -458,6 +553,8 @@ class AutoPreprocessor:
                 return MessagesPreprocessor(**self.kwargs)
         if 'instruction' in features and 'input' in features:
             return AlpacaPreprocessor(**self.kwargs)
+        if 'yolo' in features:
+            return YoloPreprocessor(**self.kwargs)
         return ResponsePreprocessor(**self.kwargs)
 
     def __call__(
