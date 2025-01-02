@@ -137,6 +137,10 @@ class Template(ProcessorMixin):
             y_min = (cy - h / 2) * img_height
             x_max = (cx + w / 2) * img_width
             y_max = (cy + h / 2) * img_height
+            x_min = max(0, min(img_width, x_min))  # 限制 x_min 在 [0, img_width] 范围
+            y_min = max(0, min(img_height, y_min))  # 限制 y_min 在 [0, img_height] 范围
+            x_max = max(0, min(img_width, x_max))  # 限制 x_max 在 [0, img_width] 范围
+            y_max = max(0, min(img_height, y_max)) 
             pascal_bboxes.append([x_min, y_min, x_max, y_max])
             labels.append(bbox_name)
         return pascal_bboxes, labels
@@ -184,9 +188,7 @@ class Template(ProcessorMixin):
        
         # Convert YOLO bboxes to Pascal VOC format
         pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
-        augmented_images = []
-        augmented_bboxes = []
-        augmented_labels = []
+    
         augmented = transform(image=image, bboxes=pascal_bboxes, class_labels = labels)
         inputs.images = [Image.fromarray(augmented['image'])]
         inputs.bbox = augmented['bboxes']
