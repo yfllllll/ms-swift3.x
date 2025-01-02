@@ -518,7 +518,7 @@ class YoloPreprocessor(RowPreprocessor):
     def __call__(self, dataset: HfDataset, **kwargs) -> HfDataset:
         # 重写 __call__ 方法，绕过父类的 __call__ 方法
         # 首先对数据集进行安全的列重命名
-        dataset = self.safe_rename_columns(dataset, self.columns_mapping)
+        dataset = self._rename_columns(dataset)
         # 调用 prepare_dataset 进行数据集准备
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
