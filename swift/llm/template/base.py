@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
+import numpy as np
 import json
 import torch
 import torch.nn as nn
@@ -18,12 +18,13 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
-
+import random
 from swift.utils import get_dist_setting, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
 from .vision_utils import load_image, normalize_bbox, rescale_image
+import albumentations as A
 
 logger = get_logger()
 
@@ -124,6 +125,190 @@ class Template(ProcessorMixin):
                 elif not isinstance(image, str):
                     image = load_image(image)
             images[i] = image
+            
+    def yolo_to_pascal_voc(self, bboxes, img_width, img_height):
+        """Convert YOLO format bboxes to Pascal VOC format."""
+        pascal_bboxes = []
+        labels = []
+        for bbox in bboxes:
+            bbox_name, yolo_coords = bbox.split(":")
+            cx, cy, w, h = map(float, yolo_coords.split(","))
+            x_min = (cx - w / 2) * img_width
+            y_min = (cy - h / 2) * img_height
+            x_max = (cx + w / 2) * img_width
+            y_max = (cy + h / 2) * img_height
+            pascal_bboxes.append([x_min, y_min, x_max, y_max])
+            labels.append(bbox_name)
+        return pascal_bboxes, labels
+
+    def pascal_voc_to_yolo(self, bboxes, labels, img_width, img_height):
+        """Convert Pascal VOC format bboxes to YOLO format."""
+        yolo_bboxes = []
+        for bbox, label_id in zip(bboxes, labels):
+            x_min, y_min, x_max, y_max = bbox
+            cx = (x_min + x_max) / 2 / img_width
+            cy = (y_min + y_max) / 2 / img_height
+            w = (x_max - x_min) / img_width
+            h = (y_max - y_min) / img_height
+            yolo_bboxes.append([label_id, cx, cy, w, h])
+        return yolo_bboxes            
+            
+            
+    def _augment(self, images, inputs):
+        """
+        目标检测数据增强
+        """
+        # Define the augmentation pipeline
+        transform = A.Compose([
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.2),
+            A.RandomRotate90(p=0.5),
+            A.RandomBrightnessContrast(p=0.2),
+            A.HueSaturationValue(p=0.2),
+            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, border_mode=0, p=0.5),
+            A.CoarseDropout(num_holes_range=(3, 6), hole_height_range=(10, 20), hole_width_range=(10, 20),fill="random_uniform",p=0.4)
+        ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))
+
+        image = np.array(inputs.images[0])
+        bboxes = inputs.bbox  # YOLO format
+        
+        if not bboxes:  # Check if there are no bounding boxes (negative sample)
+            augmented = transform(image=image, bboxes=[], class_labels=[])
+            inputs.images = [augmented['image']]
+            inputs.bbox = []
+            inputs.bbox_names = []
+            inputs.unique_bbox_names = []
+            return
+        
+        img_height, img_width = image.shape[:2]  # Get height and width from NumPy array
+       
+        # Convert YOLO bboxes to Pascal VOC format
+        pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
+        augmented_images = []
+        augmented_bboxes = []
+        augmented_labels = []
+        augmented = transform(image=image, bboxes=pascal_bboxes, class_labels = labels)
+        inputs.images = [Image.fromarray(augmented['image'])]
+        inputs.bbox = augmented['bboxes']
+        inputs.bbox_names = augmented['class_labels']
+        inputs.unique_bbox_names = list(set(inputs.bbox_names))
+       
+        # augmented_images.append(augmented['image'])
+        # augmented_bboxes.append(augmented['bboxes'])
+        # augmented_labels.append(augmented['class_labels'])
+
+  
+    def _generate_message(self, inputs):
+        '''将目标检测数据转换为llm可识别的格式'''
+        messages = []
+
+        # 获取不存在的类别名
+        none_exist = list(set(inputs.class_names) - set(inputs.unique_bbox_names))
+        # 随机采样查询类别
+        if len(inputs.unique_bbox_names) > 0:
+            image_classes_sample = random.sample(inputs.unique_bbox_names, k=min(1, len(inputs.unique_bbox_names)))
+            dataset_classes_sample = random.sample(none_exist, k=min(1, len(none_exist))) if len(none_exist) > 0 else []
+        else:
+            image_classes_sample = []
+            dataset_classes_sample = random.sample(none_exist, k=min(1, len(none_exist)))
+
+        queried_classes = list(set(dataset_classes_sample + image_classes_sample))
+
+        # 构造用户输入部分
+        user_message = {
+            'role': 'user',
+            'content': f'<image> 请检测图像中的{", ".join(queried_classes)}'
+        }
+        messages.append(user_message)
+
+        # 构造助手响应部分
+        category_counts = {classname: inputs.bbox_names.count(classname) for classname in inputs.unique_bbox_names}
+        queried_category_counts = {classname: category_counts.get(classname, 0) for classname in queried_classes}
+
+        existing_classes = {classname: count for classname, count in queried_category_counts.items() if count > 0}
+        missing_classes = [classname for classname, count in queried_category_counts.items() if count == 0]
+
+        assistant_content = ''
+        if existing_classes:
+            assistant_content += f'本张影像存在'
+            for classname, count in existing_classes.items():
+                assistant_content += f'{classname}目标{count}个，'
+        if missing_classes:
+            assistant_content += f'不存在{", ".join(sorted(missing_classes))}目标。'
+
+        assistant_content += '\n以下是存在的查询目标坐标:\n'
+        img_height, img_width  = inputs.images[0].height, inputs.images[0].width
+        scale_height, scale_width =  999 / img_height , 999 / img_width
+        for classname in sorted(existing_classes.keys()):
+            for bbox, bbox_name in zip(inputs.bbox, inputs.bbox_names):
+                if bbox_name == classname:
+                    x_min, y_min, x_max, y_max = bbox
+                    x_min = x_min * scale_width
+                    x_max = x_max * scale_width
+                    y_min = y_min * scale_height
+                    y_max = y_max * scale_height
+                    assistant_content += f'<|object_ref_start|>{classname}<|object_ref_end|><|box_start|>({int(x_min)},{int(y_min)}),({int(x_max)},{int(y_max)})<|box_end|>'
+
+        assistant_message = {
+            'role': 'assistant',
+            'content': assistant_content
+        }
+        messages.append(assistant_message)
+
+        # 替换原始 messages 属性
+        inputs.messages = messages
+
+    
+    def _fake_message(self):
+        """"
+        此时inputs格式为：
+        {
+            images：['bytes':None, 'path']
+            bbox：[classname:yolo]
+            class_names：数据集所有的类别列表
+        }
+        为与源代码兼容，需要构建一个fake message, 骗过StdTemplateInputs.from_dict, 即通过增添message实现，
+        message格式如下：
+        {'messages': [{'role': 'system', 'content': '你是个有用无害的助手'}, {'role': 'user', 'content': '<image> 请检测图像中的安全帽'}, {'role': 'assistant', 'content': '本张影像存在11个目标:<|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(62,16),(72,36)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(364,30),(374,50)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(310,75),(319,98)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(300,86),(309,105)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(719,448),(730,466)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(693,94),(704,114)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(717,46),(725,61)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(943,135),(953,153)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(504,57),(514,77)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(600,78),(611,101)<|box_end|><|object_ref_start|>安全帽<|object_ref_end|><|box_start|>(666,87),(677,109)<|box_end|>'}], 'images': [{'bytes': None, 'path': '/ms-swift/dataset/Tower_bigdata/images/bigdata/施工未戴安全帽/正样本/JPEGlmages/ZGTT_1212112_20230316194036_b2eec7668c4e4e878267fffa179f4e6ec736739d579643f7b59c0db37bc448bb_01.jpg'}]}
+        """
+        fake_message = {
+                'messages': [
+                    {'role': 'system', 'content': '你是个有用无害的助手'},
+                    {'role': 'user', 'content': '<image>请检测图像中的<classnames>'},
+                    {'role': 'assistant', 'content': '对不起，本张影像不包含您查询的目标'}
+                ],
+                'images': None
+            }
+        return fake_message
+
+    def _preprocess_imges(       
+        self,
+        inputs: StdTemplateInputs,
+    ) -> None:
+        '''
+        加载图像和构建message
+        '''
+        images = inputs.images
+        load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
+        load_images_origin = load_images
+        if self.max_pixels is not None or inputs.objects:
+            load_images = True
+        if images:
+            self._load_images(images, load_images)
+        if 'yolo' in inputs:
+            pass
+        if self.max_pixels is not None:
+            assert self.grounding_type != 'real', 'not support'  # TODO:check
+            images = [rescale_image(img, self.max_pixels) for img in images]
+        if inputs.objects:
+            if isinstance(inputs.objects, str):
+                inputs.objects = json.loads(inputs.objects)
+            normalize_bbox(inputs.objects, inputs.images, to_type=self.grounding_type)
+        if images and not load_images_origin:  # fix pt & qwen-vl
+            for i, image in enumerate(images):
+                if isinstance(image, Image.Image):
+                    images[i] = self._save_pil_image(image)
+        inputs.images = images
 
     def _preprocess_inputs(
         self,
@@ -136,6 +321,9 @@ class Template(ProcessorMixin):
             load_images = True
         if images:
             self._load_images(images, load_images)
+        if hasattr(inputs, 'yolo'):
+            self._augment(images, inputs)
+            self._generate_message(inputs)
         if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, self.max_pixels) for img in images]
@@ -189,13 +377,23 @@ class Template(ProcessorMixin):
         """
         if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
-
+        # self._preprocess_imges(inputs)
+        yolo_flag = False
+        if 'yolo' in inputs:
+            yolo_flag = True
+            ori_inputs = inputs
+            inputs = self._fake_message()
         if isinstance(inputs, dict):
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
 
         assert isinstance(inputs, StdTemplateInputs)
+        if yolo_flag:
+            inputs.bbox = ori_inputs['bbox']
+            inputs.class_names = ori_inputs['class_names']
+            inputs.images = ori_inputs['images']
+            inputs.yolo = 1
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy'}:
             encoded = Template._encode(self, inputs)
