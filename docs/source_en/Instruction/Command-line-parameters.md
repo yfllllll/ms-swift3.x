@@ -6,20 +6,23 @@ The introduction to command line parameters will cover base arguments, atomic ar
 
 - 🔥tuner_backend: Optional values are 'peft' and 'unsloth', default is 'peft'
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
+- 🔥adapters: A list used to specify the ID/path of the adapter, default is `[]`.
 - seed: Default is 42
 - model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference.
-- load_dataset_config: When specifying resume_from_checkpoint/ckpt_dir, it will read the `args.json` in the saved file and assign values to any parameters that are None (can be overridden by manual input). If this parameter is set to True, it will read the data parameters as well. Default is False.
+- load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` is specified, it will read the `args.json` file from the saved checkpoint and assign values to the `BaseArguments` that are defaulted to None (excluding DataArguments and GenerationArguments). These can be overridden by manually passing in values. The default is `True`.
+- load_data_args: If this parameter is set to True, it will additionally read the data parameters. The default is `False`.
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
 - hub_token: Hub token. You can check the modelscope hub token [here](https://modelscope.cn/my/myaccesstoken).
 - custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.
 
 ### Model Arguments
-
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
 - model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
+- task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
 - attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
+- num_labels: To be specified for classification models, representing the number of labels, default is None.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
 - device_map: Configuration of the device map used by the model, e.g., 'auto', 'cpu', json string, json file path.
 - local_repo_path: Some models require a GitHub repo when loading. To avoid network issues during `git clone`, you can directly use a local repo. This parameter needs to pass the local repo path, default is `None`.
@@ -85,7 +88,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 
 - 🔥output_dir: Default is `output/<model_name>`.
 - 🔥gradient_checkpointing: Whether to use gradient checkpointing, default is True.
-- 🔥deepspeed: Default is None. Can be set to 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration files from ms-swift.
+- 🔥deepspeed: Default is None. Can be set to 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration files from ms-swift.
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - weight_decay: Weight decay coefficient, default value is 0.1.
@@ -105,9 +108,9 @@ Other important parameters:
 - 🔥gradient_accumulation_steps: Gradient accumulation, default is 1.
 - 🔥save_strategy: Strategy for saving the model, options are 'no', 'steps', 'epoch', default is 'steps'.
 - 🔥save_steps: Default is 500.
-- 🔥save_total_limit: Default is None, saving all checkpoints.
-- 🔥eval_strategy: Evaluation strategy, follows `save_strategy`.
+- 🔥eval_strategy: Default is None. Evaluation strategy, follows `save_strategy`.
 - 🔥eval_steps: Default is None. If evaluation dataset exists, follows `save_steps`.
+- 🔥save_total_limit: Default is None, saving all checkpoints.
 - max_steps: Default is -1, maximum number of training steps. Must be set when the dataset is streaming.
 - 🔥warmup_ratio: Default is 0.
 - save_on_each_node: Default is False. To be considered in multi-machine training.
@@ -148,6 +151,15 @@ Other important parameters:
 - 🔥use_dora: Default is `False`, whether to use `DoRA`.
 - use_rslora: Default is `False`, whether to use `RS-LoRA`.
 - 🔥lorap_lr_ratio: LoRA+ parameter, default value is `None`, recommended values `10~16`, specifying this parameter allows using lora+ when using LoRA.
+- init_weights: Weight initialization method, applicable to supported Tuners. The default value is `true`.
+
+##### LoRA-GA
+- lora_ga_batch_size: The default value is `2`. The batch size used for estimating gradients during initialization in LoRA-GA.
+- lora_ga_iters: The default value is `2`. The number of iterations for estimating gradients during initialization in LoRA-GA.
+- lora_ga_max_length: The default value is `1024`. The maximum input length for estimating gradients during initialization in LoRA-GA.
+- lora_ga_direction: The default value is `ArB2r`. The initial direction used for gradient estimation during initialization in LoRA-GA. Allowed values are: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
+- lora_ga_scale: The default value is `stable`. The scaling method for initialization in LoRA-GA. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
+- lora_ga_stable_gamma: The default value is `16`. The gamma value when choosing `stable` scaling for initialization.
 
 #### FourierFt
 
@@ -266,7 +278,6 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - enforce_eager: Whether vllm uses pytorch eager mode or establishes a cuda graph. Default is `False`. Setting to True can save memory but may affect efficiency.
 - 🔥limit_mm_per_prompt: Controls vllm using multiple images, default is `None`. For example, use `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - vllm_max_lora_rank: Default value is `16`. Parameters supported by vllm for LoRA.
-- lora_modules: Used to support dynamic switching between multiple LoRAs, default is `[]`.
 
 ### Merge Arguments
 
@@ -284,8 +295,6 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - resume_only_model: If resume_from_checkpoint, only resume model weights, default is False.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - loss_type: Type of loss, default uses the model's built-in loss function.
-- num_labels: To be specified for classification models, representing the number of labels, default is None.
--
 - packing: Whether to use packing, default is False.
 - 🔥lazy_tokenize: Whether to use lazy_tokenize, default is False during LLM training, default is True during MLLM training.
 
@@ -320,7 +329,6 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
-- 🔥ckpt_dir: Path to the model checkpoint folder, default is None.
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
 - result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
@@ -355,11 +363,10 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 
 Export Arguments include the [basic arguments](#base-arguments) and [merge arguments](#merge-arguments), and also contain the following:
 
-- 🔥ckpt_dir: Checkpoint path, default is None.
 - 🔥output_dir: Path for storing export results, default is None.
 
 - 🔥quant_method: Options are 'gptq' and 'awq', default is None.
-- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 256.
+- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 128.
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.

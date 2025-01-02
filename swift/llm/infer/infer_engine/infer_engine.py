@@ -31,7 +31,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
         self.pre_infer_hooks = []
-        self.default_template = get_template(self.model_meta.template, self.processor)
+        if getattr(self, 'default_template', None) is None:
+            self.default_template = get_template(self.model_meta.template, self.processor)
+        self._adapters_pool = {}
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
@@ -52,12 +54,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         async def _run_infer(i, task, queue, stream: bool = False):
             # task with queue
-            if stream:
-                async for stream_response in await task:
-                    queue.put((i, stream_response))
-            else:
-                queue.put((i, await task))
-            queue.put((i, None))
+            try:
+                if stream:
+                    async for stream_response in await task:
+                        queue.put((i, stream_response))
+                else:
+                    queue.put((i, await task))
+            finally:
+                queue.put((i, None))
 
         async def _batch_run(tasks):
             return await asyncio.gather(*tasks)
@@ -132,12 +136,13 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 pass
             return self._update_metrics(res, metrics)
 
-    def _get_toolcall(self, response: Union[str, List[Dict[str,
-                                                           Any]]]) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self,
+                      response: Union[str, List[Dict[str, Any]]],
+                      tools_prompt='react_en') -> Optional[List[ChatCompletionMessageToolCall]]:
         if not isinstance(response, str):
             response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])
 
-        action, action_input = split_action_action_input(response)
+        action, action_input = split_action_action_input(response, tools_prompt=tools_prompt)
         if action is None:
             return None
 
@@ -239,12 +244,4 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def safe_asyncio_run(coro):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop:
-            result = InferEngine.thread_run(asyncio.run, args=(coro, ))
-        else:
-            result = asyncio.run(coro)
-        return result
+        return InferEngine.thread_run(asyncio.run, args=(coro, ))

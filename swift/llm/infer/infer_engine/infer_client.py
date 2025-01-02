@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
+import os
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
@@ -35,6 +35,9 @@ class InferClient(InferEngine):
         self.api_key = api_key
         self.host = host
         self.port = port
+        if timeout is None:
+            timeout = os.getenv('TIMEOUT')
+            timeout = timeout and float(timeout)
         self.timeout = timeout
         self._models = None
 
@@ -56,7 +59,7 @@ class InferClient(InferEngine):
 
     def _get_request_kwargs(self) -> Dict[str, Any]:
         request_kwargs = {}
-        if isinstance(self.timeout, int) and self.timeout > 0:
+        if isinstance(self.timeout, (int, float)) and self.timeout > 0:
             request_kwargs['timeout'] = self.timeout
         if self.api_key is not None:
             request_kwargs['headers'] = {'Authorization': f'Bearer {self.api_key}'}

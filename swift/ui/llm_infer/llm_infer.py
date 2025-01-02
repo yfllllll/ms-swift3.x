@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import atexit
 import os
 import re
+import signal
 import sys
 import time
 from copy import deepcopy
@@ -230,7 +232,7 @@ class LLMInfer(BaseUI):
         model = kwargs.get('model')
         if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
             kwargs['ckpt_dir'] = kwargs.pop('model')
-            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r') as f:
+            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
                 kwargs['train_type'] = _json['train_type']
@@ -297,13 +299,37 @@ class LLMInfer(BaseUI):
                 time.sleep(1)
                 cnt += 1
                 if cnt >= 60:
-                    logger.warn(f'Deploy costing too much time, please check log file: {log_file}')
+                    logger.warning_once(f'Deploy costing too much time, please check log file: {log_file}')
+            if cls.is_gradio_app:
+                cls.register_clean_hook()
             logger.info('Deploy done.')
         cls.deployed = True
         running_task = Runtime.refresh_tasks(log_file)
         if cls.is_gradio_app:
             cls.running_task = running_task['value']
         return gr.update(open=True), running_task
+
+    @classmethod
+    def clean_deployment(cls):
+        if not cls.is_gradio_app:
+            return
+
+        logger.info('Killing deployment')
+        _, args = Runtime.parse_info_from_cmdline(cls.running_task)
+        os.system(f'pkill -9 -f {args["log_file"]}')
+        logger.info('Done.')
+
+    @classmethod
+    def register_clean_hook(cls):
+        atexit.register(LLMInfer.clean_deployment)
+        signal.signal(signal.SIGINT, LLMInfer.signal_handler)
+        if os.name != 'nt':
+            signal.signal(signal.SIGTERM, LLMInfer.signal_handler)
+
+    @staticmethod
+    def signal_handler(*args, **kwargs):
+        LLMInfer.clean_deployment()
+        sys.exit(0)
 
     @classmethod
     def clear_session(cls):
@@ -401,6 +427,8 @@ class LLMInfer(BaseUI):
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:
+            if chunk[0] is None:
+                continue
             stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
             yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
