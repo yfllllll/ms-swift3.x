@@ -21,6 +21,7 @@ class SwiftEval(SwiftPipeline):
 
     def run(self):
         args = self.args
+        assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         eval_report = {}
         deploy_context = nullcontext() if args.eval_url else run_deploy(self.args, return_url=True)
         with deploy_context as url:
@@ -41,7 +42,8 @@ class SwiftEval(SwiftPipeline):
                 eval_report['vlmeval'] = result
         eval_report.update({
             'time': args.time,
-            'model': args.ckpt_dir or args.model,
+            'model': args.model,
+            'adapters': args.adapters,
             'result_path': args.result_path,
             'eval_output_dir': args.eval_output_dir,
             'eval_limit': args.eval_limit
@@ -87,7 +89,7 @@ class SwiftEval(SwiftPipeline):
 
     def get_vlmeval_task_cfg(self, dataset: List[str], url: str):
         args = self.args
-        return {
+        task_cfg = {
             'eval_backend': 'VLMEvalKit',
             'eval_config': {
                 'data':
@@ -105,6 +107,8 @@ class SwiftEval(SwiftPipeline):
                 args.max_batch_size or 16,
             }
         }
+        task_cfg['work_dir'] = task_cfg['eval_config']['work_dir']  # compat evalscope 0.8.1
+        return task_cfg
 
 
 def eval_main(args: Union[List[str], EvalArguments, None] = None):

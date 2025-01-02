@@ -1,17 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import nullcontext
 from itertools import chain
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
-from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, Template, get_template, load_dataset,
-                       sample_dataset)
+from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.utils import get_logger, is_master, open_jsonl_writer
+from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
-from .utils import InferCliState, prepare_pt_engine_template
+from .utils import InferCliState
 
 logger = get_logger()
 
@@ -24,15 +24,20 @@ class SwiftInfer(SwiftPipeline):
         from swift.llm import merge_lora
         super().__init__(args)
         args = self.args
+        assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         if args.merge_lora:
             merge_lora(args, device_map='cpu')
+        self.infer_kwargs = {}
+        if args.infer_backend == 'vllm' and args.adapters:
+            self.infer_kwargs['adapter_request'] = AdapterRequest('_lora', args.adapters[0])
 
         if args.infer_backend == 'pt':
-            self.infer_engine, self.template = prepare_pt_engine_template(args)
+            model, self.template = prepare_model_template(args)
+            self.infer_engine = PtEngine.from_model_template(model, self.template, max_batch_size=args.max_batch_size)
             logger.info(f'model: {self.infer_engine.model}')
         else:
-            self.infer_engine = SwiftInfer.get_infer_engine(args)
-            self.template = self.get_template(args, self.processor)
+            self.infer_engine = self.get_infer_engine(args)
+            self.template = args.get_template(self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
 
     def __getattr__(self, key: str):
@@ -69,13 +74,6 @@ class SwiftInfer(SwiftPipeline):
 
         return infer_engine_cls(**kwargs)
 
-    @staticmethod
-    def get_template(args, processor: Processor) -> Template:
-        template_kwargs = args.get_template_kwargs()
-        template = get_template(args.template, processor, use_chat_template=args.use_chat_template, **template_kwargs)
-        logger.info(f'default_system: {template.template_meta.default_system}')
-        return template
-
     def main(self):
         args = self.args
         context = open_jsonl_writer(
@@ -95,8 +93,12 @@ class SwiftInfer(SwiftPipeline):
         return result
 
     def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
-        res_or_gen = self.infer([infer_request], request_config, template=self.template, use_tqdm=False)
-        if request_config.stream:
+        res_or_gen = self.infer([infer_request],
+                                request_config,
+                                template=self.template,
+                                use_tqdm=False,
+                                **self.infer_kwargs)
+        if request_config and request_config.stream:
             response = ''
             for res in res_or_gen:
                 delta = res[0].choices[0].delta.content
@@ -113,6 +115,7 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         template = self.template
         request_config = args.get_request_config()
+        logger.info(f'request_config: {request_config}')
 
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
@@ -166,11 +169,14 @@ class SwiftInfer(SwiftPipeline):
         val_dataset = self._prepare_val_dataset()
         logger.info(f'val_dataset: {val_dataset}')
         result_list = []
-        if request_config.stream:
+        if request_config and request_config.stream:
             for data in val_dataset:
                 labels = InferRequest.remove_response(data['messages'])
                 query = data['messages'][-1]['content']
-                print(f'[QUERY] {query}\n[RESPONSE] ', end='')
+                print(f'[QUERY] {query}')
+                if labels:
+                    print(f'[LABELS] {labels}')
+                print('[RESPONSE] ', end='')
                 response = self.infer_single(data, request_config)
                 data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
@@ -183,10 +189,13 @@ class SwiftInfer(SwiftPipeline):
             val_dataset = list(val_dataset)
             labels_list = [InferRequest.remove_response(data['messages']) for data in val_dataset]
 
-            resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True)
+            resp_list = self.infer(
+                val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
-                data = {'response': response, 'labels': labels, **data}
+                if labels:
+                    data['labels'] = labels
+                data = {'response': response, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
             if is_dist:
                 total_result_list = [None for _ in range(args.world_size)] if args.rank == 0 else None

@@ -71,11 +71,11 @@ register_model(
     ))
 
 
-def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
-                                            model_info: ModelInfo,
-                                            model_kwargs: Dict[str, Any],
-                                            load_model: bool = True,
-                                            **kwargs):
+def get_model_tokenizer_xcomposer2(model_dir: str,
+                                   model_info: ModelInfo,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   **kwargs):
     version = kwargs.pop('version', 'v2')
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     if version == 'v2-4khd':
@@ -91,6 +91,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         CLIPVisionTower.load_model = load_model
 
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model.vit.vision_tower.gradient_checkpointing_enable()
     if model is not None:
         if version == 'v2' and use_flash_attn:
             # fix AttributeError: no attribute 'attention_dropout'
@@ -116,8 +117,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-        use_submodel_func(model, 'language_model', func_list)
+        use_submodel_func(model, 'language_model')
         patch_output_clone(model.language_model.get_input_embeddings())
 
     return model, tokenizer
@@ -168,13 +168,32 @@ register_model(
                 Model('OpenGVLab/InternVL2-26B', 'OpenGVLab/InternVL2-26B'),
                 Model('OpenGVLab/InternVL2-40B', 'OpenGVLab/InternVL2-40B'),
                 Model('OpenGVLab/InternVL2-Llama3-76B', 'OpenGVLab/InternVL2-Llama3-76B'),
-            ], ),
+            ]),
+            # (infer use lmdeploy)
             ModelGroup([
                 Model('OpenGVLab/InternVL2-2B-AWQ', 'OpenGVLab/InternVL2-2B-AWQ'),
                 Model('OpenGVLab/InternVL2-8B-AWQ', 'OpenGVLab/InternVL2-8B-AWQ'),
                 Model('OpenGVLab/InternVL2-26B-AWQ', 'OpenGVLab/InternVL2-26B-AWQ'),
                 Model('OpenGVLab/InternVL2-40B-AWQ', 'OpenGVLab/InternVL2-40B-AWQ'),
                 Model('OpenGVLab/InternVL2-Llama3-76B-AWQ', 'OpenGVLab/InternVL2-Llama3-76B-AWQ'),
+            ]),
+            ModelGroup([Model('OpenGVLab/InternVL2-8B-MPO', 'OpenGVLab/InternVL2-8B-MPO')]),
+            # pretrain
+            ModelGroup([
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-1B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-1B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-2B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-2B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-4B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-4B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-8B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-8B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-26B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-26B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-40B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-40B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-Llama3-76B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-Llama3-76B-Pretrain'),
             ])
         ],
         TemplateType.internvl2,
@@ -213,7 +232,24 @@ register_model(
                 Model('OpenGVLab/InternVL2_5-26B', 'OpenGVLab/InternVL2_5-26B'),
                 Model('OpenGVLab/InternVL2_5-38B', 'OpenGVLab/InternVL2_5-38B'),
                 Model('OpenGVLab/InternVL2_5-78B', 'OpenGVLab/InternVL2_5-78B'),
-            ], ),
+            ]),
+            # quant (infer use lmdeploy)
+            ModelGroup([
+                Model('OpenGVLab/InternVL2_5-4B-AWQ', 'OpenGVLab/InternVL2_5-4B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-8B-AWQ', 'OpenGVLab/InternVL2_5-8B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-26B-AWQ', 'OpenGVLab/InternVL2_5-26B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-38B-AWQ', 'OpenGVLab/InternVL2_5-38B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-78B-AWQ', 'OpenGVLab/InternVL2_5-78B-AWQ'),
+            ]),
+            ModelGroup([
+                Model('OpenGVLab/InternVL2_5-1B-MPO', 'OpenGVLab/InternVL2_5-1B-MPO'),
+                Model('OpenGVLab/InternVL2_5-2B-MPO', 'OpenGVLab/InternVL2_5-2B-MPO'),
+                Model('OpenGVLab/InternVL2_5-4B-MPO', 'OpenGVLab/InternVL2_5-4B-MPO'),
+                Model('OpenGVLab/InternVL2_5-8B-MPO', 'OpenGVLab/InternVL2_5-8B-MPO'),
+                Model('OpenGVLab/InternVL2_5-26B-MPO', 'OpenGVLab/InternVL2_5-26B-MPO'),
+                Model('OpenGVLab/InternVL2_5-38B-MPO', 'OpenGVLab/InternVL2_5-38B-MPO'),
+                Model('OpenGVLab/InternVL2_5-78B-MPO', 'OpenGVLab/InternVL2_5-78B-MPO'),
+            ])
         ],
         TemplateType.internvl2_5,
         get_model_tokenizer_internvl,
@@ -229,14 +265,17 @@ register_model(
         [
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b', 'internlm/internlm-xcomposer2d5-7b'),
-            ], ),
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base',
+                      'internlm/internlm-xcomposer2d5-ol-7b:base')
+            ]),
         ],
         TemplateType.xcomposer2_5,
-        partial(get_model_tokenizer_internlm_xcomposer2, version='v2.5'),
+        partial(get_model_tokenizer_xcomposer2, version='v2.5'),
         architectures=['InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.xcomposer,
         tags=['vision'],
         requires=['decord'],
+        # target_modules: attention.wqkv attention.wo feed_forward.w1 feed_forward.w2 feed_forward.w3
     ))
 
 register_model(
@@ -248,7 +287,7 @@ register_model(
             ], ),
         ],
         TemplateType.xcomposer2,
-        get_model_tokenizer_internlm_xcomposer2,
+        get_model_tokenizer_xcomposer2,
         architectures=['InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.xcomposer,
         tags=['vision'],
@@ -263,8 +302,33 @@ register_model(
             ], ),
         ],
         TemplateType.xcomposer2,
-        partial(get_model_tokenizer_internlm_xcomposer2, version='v2-4khd'),
+        partial(get_model_tokenizer_xcomposer2, version='v2-4khd'),
         architectures=['InternLM2ForCausalLM', 'InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.xcomposer,
         tags=['vision'],
+    ))
+
+
+def get_model_tokenizer_xcomposer_ol(model_dir, *args, **kwargs):
+    model_tag = model_dir.rsplit('/', 1)[-1]
+    if model_tag == 'audio':
+        from .qwen import get_model_tokenizer_qwen2_audio
+        return get_model_tokenizer_qwen2_audio(model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.xcomposer2_5_ol_audio,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:audio',
+                      'internlm/internlm-xcomposer2d5-ol-7b:audio'),
+            ]),
+        ],
+        TemplateType.qwen2_audio,
+        get_model_tokenizer_xcomposer_ol,
+        requires=['transformers>=4.45'],
+        architectures=['Qwen2AudioForConditionalGeneration'],
+        model_arch=ModelArch.qwen2_audio,
+        tags=['audio'],
     ))

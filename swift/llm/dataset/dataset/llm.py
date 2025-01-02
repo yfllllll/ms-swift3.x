@@ -9,17 +9,20 @@ from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreproc
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
-def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
-    if inp.startswith('输入：'):
-        inp = inp[3:]
-    return f'{inst}\n{inp}'
+class AlpacaZhPreprocessor(AlpacaPreprocessor):
+
+    @classmethod
+    def concat_inst_input(cls, instruction, input_):
+        if input_ and input_.startswith('输入：'):
+            input_ = input_[3:]
+        return super().concat_inst_input(instruction, input_)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/alpaca-gpt4-data-zh',
         hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh',
-        preprocess_func=AlpacaPreprocessor(concat_inst_input=_concat_inst_inp_alpaca_zh),
+        preprocess_func=AlpacaZhPreprocessor(),
         tags=['chat', 'general', '🔥'],
     ))
 
@@ -113,6 +116,7 @@ register_dataset(
                 preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=True)),
                 is_weak_subset=True)
         ],
+        split=['train', 'validation'],
         tags=['chat', 'agent', 'multi-round']))
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
@@ -129,6 +133,7 @@ register_dataset(
                 'summary': 'response'
             }),
         tags=['text-generation', '🔥'],
+        split=['train', 'validation'],
     ))
 
 
@@ -164,13 +169,41 @@ register_dataset(
                                         task='Natural Language Inference',
                                         is_pair_seq=True),
         tags=['text-generation', 'classification'],
+        split=['train', 'validation'],
     ))
+
+
+class JdClsPreprocessor(ClsPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        label = int(row['label'])
+        res = super().preprocess(row)
+        res['messages'].pop()
+        res['label'] = label
+        return res
+
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='DAMO_NLP/jd',
-        preprocess_func=ClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False),
-        tags=['text-generation', 'classification', '🔥']))
+        subsets=[
+            SubsetDataset(
+                'default',
+                'default',
+                preprocess_func=ClsPreprocessor(['negative', 'positive'],
+                                                task='Sentiment Classification',
+                                                is_pair_seq=False)),
+            SubsetDataset(
+                'cls',
+                'default',
+                preprocess_func=JdClsPreprocessor(['negative', 'positive'],
+                                                  task='Sentiment Classification',
+                                                  is_pair_seq=False),
+            ),
+        ],
+        tags=['text-generation', 'classification', '🔥'],
+        split=['train', 'validation'],
+    ))
 
 
 class SyntheticText2SqlPreprocessor(ResponsePreprocessor):
@@ -353,7 +386,8 @@ Output:"""
     def preprocess(self, row):
         rows = []
         for response in ['Human', 'ChatGPT']:
-            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            query = self.prompt.format(
+                question=row['query'], answer=self.random_state.choice(row[f'{response.lower()}_answers']))
             rows.append(super().preprocess({'query': query, 'response': response}))
         return rows
 
@@ -363,7 +397,8 @@ class HC3ClsPreprocessor(HC3Preprocessor):
     def preprocess(self, row):
         rows = []
         for i, response in enumerate(['Human', 'ChatGPT']):
-            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            query = self.prompt.format(
+                question=row['query'], answer=self.random_state.choice(row[f'{response.lower()}_answers']))
             rows.append(ResponsePreprocessor.preprocess(self, {'query': query, 'label': i}))
         return rows
 
@@ -391,11 +426,27 @@ register_dataset(
         subsets=hc3_subsets,
         tags=['text-generation', 'classification', '🔥']))
 
+hc3_subset_names = ['finance', 'medicine']
+hc3_subsets: List[SubsetDataset] = []
+for hc3_subset_name in hc3_subset_names:
+    hc3_subsets.append(
+        SubsetDataset(
+            name=hc3_subset_name,
+            subset=hc3_subset_name,
+            preprocess_func=HC3Preprocessor(),
+        ))
+    hc3_subsets.append(
+        SubsetDataset(
+            name=f'{hc3_subset_name}_cls',
+            subset=hc3_subset_name,
+            preprocess_func=HC3ClsPreprocessor(),
+        ))
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='simpleai/HC3',
         hf_dataset_id='Hello-SimpleAI/HC3',
-        subsets=['finance', 'medicine'],
+        subsets=hc3_subsets,
         preprocess_func=HC3Preprocessor(),
         tags=['text-generation', 'classification', '🔥']))
 
@@ -457,7 +508,7 @@ register_dataset(
         ms_dataset_id='AI-ModelScope/hh-rlhf',
         subsets=['helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
         preprocess_func=HHRLHFPreprocessor(),
-        split=['train'],
+        split=['train', 'test'],
         tags=['rlhf', 'dpo'],
         huge_dataset=True))
 

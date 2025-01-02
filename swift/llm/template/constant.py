@@ -18,6 +18,7 @@ class LLMTemplateType:
     llama3 = 'llama3'
     llama3_2 = 'llama3_2'
     reflection = 'reflection'
+    megrez = 'megrez'
     yi_coder = 'yi_coder'
     sus = 'sus'
 
@@ -49,6 +50,9 @@ class LLMTemplateType:
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'
 
+    skywork = 'skywork'
+    skywork_o1 = 'skywork_o1'
+
     mistral_nemo = 'mistral_nemo'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
@@ -58,7 +62,6 @@ class LLMTemplateType:
 
     yuan = 'yuan'
     xverse = 'xverse'
-    skywork = 'skywork'
     bluelm = 'bluelm'
     orion = 'orion'
 
@@ -72,6 +75,7 @@ class MLLMTemplateType:
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
     qwen2_audio = 'qwen2_audio'
+    qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
 
     llama3_1_omni = 'llama3_1_omni'
@@ -119,11 +123,13 @@ class MLLMTemplateType:
     minicpmv2_6 = 'minicpmv2_6'
 
     deepseek_vl = 'deepseek_vl'
+    deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
     mplug_owl3_241101 = 'mplug_owl3_241101'
+    doc_owl2 = 'doc_owl2'
 
     emu3_chat = 'emu3_chat'
     emu3_gen = 'emu3_gen'
@@ -135,6 +141,7 @@ class MLLMTemplateType:
     phi3_vision = 'phi3_vision'
     florence = 'florence'
     molmo = 'molmo'
+    megrez_omni = 'megrez_omni'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType):
