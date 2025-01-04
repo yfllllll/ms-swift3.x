@@ -8,7 +8,7 @@ OMP_NUM_THREADS=14 \
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model ${mergeed} \
-    --dataset output.jsonl \
+    --dataset ../output.jsonl \
     --quant_n_samples 128 \
     --quant_batch_size 1 \
     --max_length 2048 \
