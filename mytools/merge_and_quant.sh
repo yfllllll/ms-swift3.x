@@ -1,10 +1,9 @@
-adapters=/root/autodl-tmp/7b_agu/checkpoint-916
+adapters=/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_agu/checkpoint-916
 mergeed=${adapters}-merged
 output_dir=qwen7b-GPTQ-Int4
 swift export \
     --adapters ${adapters} \
     --merge_lora true
-
 OMP_NUM_THREADS=14 \
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
