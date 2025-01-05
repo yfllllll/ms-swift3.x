@@ -156,9 +156,90 @@ class Template(ProcessorMixin):
             h = (y_max - y_min) / img_height
             yolo_bboxes.append([label_id, cx, cy, w, h])
         return yolo_bboxes            
+    def _visualize_augmentation(self, original_image, original_bboxes, original_labels, 
+                                augmented_image, augmented_bboxes, augmented_labels, save_path="augmentation_result.png"):
+        """
+        将增强前和增强后的图像绘制在同一张图像中并保存到本地文件。
+        Args:
+            original_image: 增强前的图像 (NumPy array or PIL Image)。
+            original_bboxes: 增强前的边界框列表 (Pascal VOC 格式)。
+            original_labels: 增强前的类别标签。
+            augmented_image: 增强后的图像 (NumPy array or PIL Image)。
+            augmented_bboxes: 增强后的边界框列表 (Pascal VOC 格式)。
+            augmented_labels: 增强后的类别标签。
+            save_path: 保存的文件路径 (默认为 "augmentation_result.png")。
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle
+        
+        # Convert images to PIL format for consistency
+        if isinstance(original_image, np.ndarray):
+            original_image = Image.fromarray(original_image)
+        if isinstance(augmented_image, np.ndarray):
+            augmented_image = Image.fromarray(augmented_image)
+        
+        # Create a matplotlib figure
+        fig, axes = plt.subplots(1, 2, figsize=(20, 10))
+        axes = axes.flatten()
+
+        # Draw original image with bounding boxes
+        axes[0].imshow(original_image)
+        axes[0].set_title("Original Image with BBoxes")
+        for bbox, label in zip(original_bboxes, original_labels):
+            x_min, y_min, x_max, y_max = bbox
+            # Draw rectangle
+            axes[0].add_patch(Rectangle(
+                (x_min, y_min),
+                x_max - x_min,
+                y_max - y_min,
+                edgecolor='red',
+                facecolor='none',
+                linewidth=2
+            ))
+            # Add label text
+            axes[0].text(
+                x_min, y_min - 5,
+                label,
+                color='red',
+                fontsize=12,
+                bbox=dict(facecolor='white', alpha=0.7)
+            )
+
+        # Draw augmented image with bounding boxes
+        axes[1].imshow(augmented_image)
+        axes[1].set_title("Augmented Image with BBoxes")
+        for bbox, label in zip(augmented_bboxes, augmented_labels):
+            x_min, y_min, x_max, y_max = bbox
+            # Draw rectangle
+            axes[1].add_patch(Rectangle(
+                (x_min, y_min),
+                x_max - x_min,
+                y_max - y_min,
+                edgecolor='green',
+                facecolor='none',
+                linewidth=2
+            ))
+            # Add label text
+            axes[1].text(
+                x_min, y_min - 5,
+                label,
+                color='green',
+                fontsize=12,
+                bbox=dict(facecolor='white', alpha=0.7)
+            )
+
+        # Turn off axis for both images
+        for ax in axes:
+            ax.axis('off')
+
+        # Save the figure to the specified path
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300)  # Save with high resolution
+        plt.close()  # Close the figure to free memory
+
             
             
-    def _augment(self, images, inputs):
+    def _augment(self, inputs):
         """
         目标检测数据增强
         """
@@ -190,6 +271,7 @@ class Template(ProcessorMixin):
         pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
     
         augmented = transform(image=image, bboxes=pascal_bboxes, class_labels = labels)
+        # self._visualize_augmentation(image, pascal_bboxes, labels, augmented['image'], augmented['bboxes'], augmented['class_labels'])
         inputs.images = [Image.fromarray(augmented['image'])]
         inputs.bbox = augmented['bboxes']
         inputs.bbox_names = augmented['class_labels']
@@ -219,7 +301,7 @@ class Template(ProcessorMixin):
         # 构造用户输入部分
         user_message = {
             'role': 'user',
-            'content': f'<image> 请检测图像中的{", ".join(queried_classes)}'
+            'content': f'<image>请检测图像中的{", ".join(queried_classes)}'
         }
         messages.append(user_message)
 
@@ -324,8 +406,10 @@ class Template(ProcessorMixin):
         if images:
             self._load_images(images, load_images)
         if hasattr(inputs, 'yolo'):
-            self._augment(images, inputs)
+            self._augment(inputs)
+            
             self._generate_message(inputs)
+            
         if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, self.max_pixels) for img in images]
