@@ -1,10 +1,4 @@
-'''
-相较于all_in_one 增加了中断继续预测的能力
-'''
-
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-os.environ['MAX_PIXELS']= '921600'
 import json
 import re
 import yaml
@@ -12,25 +6,6 @@ from tqdm import tqdm
 from PIL import Image
 import torch
 import fiftyone as fo
-from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
-)
-from swift.utils import seed_everything
-from swift.tuners import Swift
-
-
-# 模型初始化
-model_id_or_path = '/data1/lyf/ms-swift3.x/output/qwen2-vl-7b-instruct/all/checkpoint-42719-gptq-int4'
-model_type = ModelType.qwen2_vl_7b_instruct
-template_type = get_default_template_type(model_type)
-print(f"template_type: {template_type}")
-
-model, tokenizer = get_model_tokenizer(model_type, torch.float16, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
-model.generation_config.max_new_tokens = 256
-template = get_template(template_type, tokenizer)
-print("Loading model...")
-seed_everything(42)
-
 # 解析 response 中的 bbox
 def parse_response_boxes(response, scale_x, scale_y):
     box_pattern = r"<\|box_start\|\>\((\d+),(\d+)\),\((\d+),(\d+)\)<\|box_end\|\>"
@@ -86,85 +61,6 @@ def load_yolo_labels(label_path, classes, pred=False):
             
     return detections
 
-
-# YOLO 格式保存函数
-def save_yolo_format(predictions, output_path, class_id, image_width, image_height, append=False):
-    mode = 'a' if append else 'w'  # 'a' for append, 'w' for overwrite
-    with open(output_path, mode) as f:
-        for box in predictions:
-            x1, y1, x2, y2 = box
-            x_center = (x1 + x2) / 2.0 / image_width
-            y_center = (y1 + y2) / 2.0 / image_height
-            width = (x2 - x1) / image_width
-            height = (y2 - y1) / image_height
-            f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
-
-# 处理每张图片
-def process_image(image_path, class_names, output_dir, processed_images):
-    try:
-        # 检查该图片是否已经处理过
-        output_file = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(image_path))[0]}.txt")
-        if os.path.exists(output_file):
-            print(f"Skipping {image_path} (already processed)")
-            return
-        
-        # 加载图像
-        image = Image.open(image_path)
-        image_width, image_height = image.size
-        scale_x = image_width / 1000  # Assuming scaled width is 1000
-        scale_y = image_height / 1000
-
-        # 遍历每个类别
-        for class_id, class_name in class_names.items():
-            query = f"找到{class_name}"  # 构建 query
-            response, _ = inference(model, template, query, images=[image_path])  # 模型推理
-
-            # 解析检测结果
-            pred_boxes = parse_response_boxes(response, scale_x, scale_y)
-
-            # 保存为 YOLO 格式
-            save_yolo_format(pred_boxes, output_file, class_id, image_width, image_height, append=True)
-
-        print(f"Processed and saved: {image_path}")
-
-    except Exception as e:
-        print(f"Error processing image {image_path}: {e}")
-
-# 处理单个文件夹
-def process_folder(root_dir, folder, saved_folder='pred'):
-    input_folder = os.path.join(root_dir, folder)
-    
-    yaml_files = ['data_zn.yaml', 'dataset_zn.yaml']
-    yaml_path = next((os.path.join(input_folder, f) for f in yaml_files if os.path.exists(os.path.join(input_folder, f))), None)
-    if not os.path.exists(yaml_path):
-        raise FileNotFoundError(f"data_zn.yaml not found in {input_folder}")
-    
-    with open(yaml_path, 'r') as yaml_file:
-        data_info = yaml.safe_load(yaml_file)
-    
-    class_names = data_info['names']  # 类别名称
-    images_folder = os.path.join(input_folder, 'images')
-    if not os.path.exists(images_folder):
-        raise FileNotFoundError(f"Images folder not found: {images_folder}")
-
-    pred_folder = os.path.join(input_folder, saved_folder)
-    os.makedirs(pred_folder, exist_ok=True)
-
-    image_files = [os.path.join(images_folder, f) for f in os.listdir(images_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-
-    for image_path in tqdm(image_files, desc=f"Processing folder: {folder}", unit="image"):
-        process_image(image_path, class_names, pred_folder, processed_images=None)
-
-    print(f"All predictions saved in: {pred_folder}")
-
-# 处理多个文件夹
-def process_folders(root_dir, folder_list, saved_folder='pred'):
-    for folder in folder_list:
-        print(f"Processing folder: {folder}")
-        try:
-            process_folder(root_dir, folder, saved_folder=saved_folder)
-        except Exception as e:
-            print(f"Error processing folder {folder}: {e}")
 
 def evaluate_predictions(dataset_name, folder_list, root_dir, iou_threshold=0.5, saved_folder='pred'):
     dataset = fo.Dataset(name=dataset_name, overwrite=True)
@@ -229,12 +125,9 @@ def evaluate_predictions(dataset_name, folder_list, root_dir, iou_threshold=0.5,
     return results
 
 
-# 调用并继续处理
-root_dir = "/data1/lyf/data/val"
-folder_list = ["life_vest_yolo"]
-saved_folder = 'pred7b'
-
-process_folders(root_dir, folder_list, saved_folder=saved_folder)
+root_dir = "/ultralytics-main/datasets/VisDrone"
+folder_list = ["VisDrone2019-DET-test-dev"]
+saved_folder = 'pred_multi_engine'
 
 results = evaluate_predictions(
     dataset_name="my_combined_dataset",

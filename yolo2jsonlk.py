@@ -45,7 +45,7 @@ def write_to_jsonl(image_label_pairs, classes, output_path):
             jsonl_file.write(json.dumps(record) + '\n')
 
 if __name__ == "__main__":
-    dataset_dir = "/data1/lyf/datasets/VisDrone/VisDrone2019-DET-train"  # 替换为你的数据集实际目录路径
+    dataset_dir = "/data1/lyf/datasets/VisDrone/VisDrone2019-DET-test-dev"  # 替换为你的数据集实际目录路径
     yaml_path = os.path.join(dataset_dir, "dataset.yaml")
     output_jsonl_path = "output.jsonl"  # 输出的jsonl文件路径，可按需修改
     classes = get_classes_from_yaml(yaml_path)
