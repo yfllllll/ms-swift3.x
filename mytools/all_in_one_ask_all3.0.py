@@ -11,7 +11,17 @@ import fiftyone as fo
 from swift.llm import InferEngine, PtEngine, VllmEngine, LmdeployEngine, InferRequest, RequestConfig
 from swift.plugin import InferStats
 
-
+# YOLO 格式保存函数
+def save_yolo_format(predictions, output_path, class_id, image_width, image_height, append=False):
+    mode = 'a' if append else 'w'  # 'a' for append, 'w' for overwrite
+    with open(output_path, mode) as f:
+        for box in predictions:
+            x1, y1, x2, y2 = box
+            x_center = (x1 + x2) / 2.0 / image_width
+            y_center = (y1 + y2) / 2.0 / image_height
+            width = (x2 - x1) / image_width
+            height = (y2 - y1) / image_height
+            f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
 # 初始化推理引擎函数
 def initialize_engine(engine_type='pt', model_id_or_path=None):
     if engine_type == 'pt':
