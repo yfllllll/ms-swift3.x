@@ -1,3 +1,69 @@
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['MAX_PIXELS'] = '921600'
+import torch
+import json
+import re
+import yaml
+from tqdm import tqdm
+from PIL import Image
+import fiftyone as fo
+from swift.llm import InferEngine, PtEngine, VllmEngine, LmdeployEngine, InferRequest, RequestConfig
+from swift.plugin import InferStats
+
+
+# 初始化推理引擎函数
+def initialize_engine(engine_type='pt', model_id_or_path=None):
+    if engine_type == 'pt':
+        # 初始化参数字典
+        pt_engine_kwargs = {}
+        
+        # 检查 model_id_or_path 是否是一个本地路径
+        
+        if os.path.isdir(model_id_or_path):
+            args_json_path = os.path.join(model_id_or_path, 'args.json')
+            # quantize_config_path = os.path.join(model_id_or_path, 'quantize_config.json')
+            if os.path.exists(args_json_path):
+                # 尝试读取 args.json 文件
+                try:
+                    with open(args_json_path, 'r', encoding='utf-8') as f:
+                        args = json.load(f)
+                        # 获取 model_type 字段并加入到参数字典
+                        if 'model_type' in args:
+                            pt_engine_kwargs['model_type'] = args['model_type']
+                        else:
+                            print(f"Warning: 'model_type' field not found in {args_json_path}")
+                except Exception as e:
+                    print(f"Error reading {args_json_path}: {e}")
+            else:
+                print(f"Warning: args.json not found in {model_id_or_path}")
+            # if os.path.exists(quantize_config_path):
+            #     # 尝试读取 args.json 文件
+            #     try:
+            #         with open(quantize_config_path, 'r', encoding='utf-8') as f:
+            #             args = json.load(f)
+            #             # 获取 model_type 字段并加入到参数字典
+            #             pt_engine_kwargs['quantization_config'] = args
+            #     except Exception as e:
+            #         print(f"Error reading {quantize_config_path}: {e}")
+            # else:
+            #     print(f"Warning: args.json not found in {model_id_or_path}")
+        # 添加其他 PtEngine 参数
+        pt_engine_kwargs['max_batch_size'] = 8
+        # pt_engine_kwargs['torch_dtype'] =torch.float16
+        # 初始化 PtEngine
+        engine = PtEngine(model_id_or_path, **pt_engine_kwargs)
+
+    elif engine_type == 'vllm':
+        engine = VllmEngine(model_id_or_path, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
+    elif engine_type == 'lmdeploy':
+        engine = LmdeployEngine(model_id_or_path, vision_batch_size=8)
+    else:
+        raise ValueError(f"Unsupported engine type: {engine_type}")
+    
+    return engine
+
+
 # 解析 response 中的 bbox 和类别
 def parse_response_boxes(response, scale_x, scale_y):
     box_pattern = r"<\|object_ref_start\|\>(.*?)<\|object_ref_end\|\><\|box_start\|\>\((\d+),(\d+)\),\((\d+),(\d+)\)<\|box_end\|\>"
