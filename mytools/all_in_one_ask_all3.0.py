@@ -146,19 +146,27 @@ def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_c
 
     print(f"All predictions saved in: {pred_folder}")
 
+def process_folders(root_dir, folder_list, saved_folder='pred', engine=None, request_config=None):
+    # logger = setup_logger()
+    for folder in folder_list:
+        print(f"Processing folder: {folder}")
+        # try:
+        process_folder(root_dir, folder, saved_folder=saved_folder, engine=engine, request_config=request_config)
+        # except Exception as e:
+        #     logger.error(f"Error processing folder {folder}: {e}", exc_info=True)  # 记录错误和调用栈信息
 
 # 主程序入口
 if __name__ == "__main__":
     # 用户选择推理引擎
     engine_type = 'pt'
-    model_id_or_path = '/root/autodl-tmp/qwen7b-GPTQ-Int4'
+    model_id_or_path = '/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_e10_agu/checkpoint-9160-qwen7b-GPTQ-Int4'
 
     # 初始化推理引擎
     engine = initialize_engine(engine_type, model_id_or_path)
     request_config = RequestConfig(max_tokens=256, temperature=0)
 
     # 设置路径
-    root_dir = "/ultralytics-main/datasets/VisDrone"
+    root_dir = "/data1/lyf/datasets/VisDrone"
     folder_list = ["VisDrone2019-DET-test-dev"]
     saved_folder = 'pred_multi_engine'
 
