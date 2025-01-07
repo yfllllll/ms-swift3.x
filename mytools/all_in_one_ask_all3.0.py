@@ -5,6 +5,8 @@ import torch
 import json
 import re
 import yaml
+import numpy as np
+import random
 from tqdm import tqdm
 from PIL import Image
 import fiftyone as fo
