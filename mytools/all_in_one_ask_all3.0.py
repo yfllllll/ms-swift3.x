@@ -130,7 +130,8 @@ def process_image(image_path, class_names, output_dir, engine, request_config):
 
 
 # 处理单个文件夹
-def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_config=None):
+# 修改后的处理单个文件夹函数，支持传入单一参数，按百分比或影像个数处理
+def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_config=None, selection_param=1.0, seed=None):
     input_folder = os.path.join(root_dir, folder)
     
     yaml_files = ['data_zn.yaml', 'dataset_zn.yaml']
@@ -146,41 +147,67 @@ def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_c
     if not os.path.exists(images_folder):
         raise FileNotFoundError(f"Images folder not found: {images_folder}")
 
+    # 获取所有图片文件
+    image_files = [os.path.join(images_folder, f) for f in os.listdir(images_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    
+    # 处理随机种子
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+    # 确定处理的图片数量
+    if isinstance(selection_param, float) and 0 < selection_param <= 1:
+        # 如果是浮点数且在 (0, 1] 之间，按百分比处理
+        image_count = int(len(image_files) * selection_param)
+    elif isinstance(selection_param, int) and selection_param > 1:
+        # 如果是整数且大于 1，按影像个数处理
+        image_count = min(selection_param, len(image_files))
+    else:
+        raise ValueError("selection_param must be a float between 0 and 1 (percentage) or an integer greater than 1 (count)")
+
+    selected_images = random.sample(image_files, image_count)
+    
     pred_folder = os.path.join(input_folder, saved_folder)
     os.makedirs(pred_folder, exist_ok=True)
 
-    image_files = [os.path.join(images_folder, f) for f in os.listdir(images_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-
-    for image_path in tqdm(image_files, desc=f"Processing folder: {folder}", unit="image"):
+    # 逐个处理选中的图像
+    for image_path in tqdm(selected_images, desc=f"Processing folder: {folder}", unit="image"):
         process_image(image_path, class_names, pred_folder, engine, request_config)
 
     print(f"All predictions saved in: {pred_folder}")
 
-def process_folders(root_dir, folder_list, saved_folder='pred', engine=None, request_config=None):
-    # logger = setup_logger()
-    for folder in folder_list:
-        print(f"Processing folder: {folder}")
-        # try:
-        process_folder(root_dir, folder, saved_folder=saved_folder, engine=engine, request_config=request_config)
-        # except Exception as e:
-        #     logger.error(f"Error processing folder {folder}: {e}", exc_info=True)  # 记录错误和调用栈信息
 
+# 修改后的处理文件夹列表函数，支持灵活设置百分比或影像个数
+def process_folders(root_dir, folder_list, saved_folder='pred', engine=None, request_config=None, selection_param=1.0, seed=None):
+    for i, folder in enumerate(folder_list):
+        print(f"Processing folder: {folder}")
+
+        # 如果传入的是一个列表（每个数据集不同的参数）
+        if isinstance(selection_param, list):
+            folder_selection_param = selection_param[i]  # 获取该数据集的参数
+        else:
+            folder_selection_param = selection_param  # 对所有数据集都应用相同的参数
+        
+        try:
+            process_folder(root_dir, folder, saved_folder=saved_folder, engine=engine, request_config=request_config, 
+                           selection_param=folder_selection_param, seed=seed)
+        except Exception as e:
+            print(f"Error processing folder {folder}: {e}")
 # 主程序入口
 if __name__ == "__main__":
     # 用户选择推理引擎
     engine_type = 'pt'
     model_id_or_path = '/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_e10_agu/checkpoint-9160-qwen7b-GPTQ-Int4'
-
     # 初始化推理引擎
     engine = initialize_engine(engine_type, model_id_or_path)
     request_config = RequestConfig(max_tokens=256, temperature=0)
-
     # 设置路径
     root_dir = "/data1/lyf/datasets/VisDrone"
     folder_list = ["VisDrone2019-DET-test-dev"]
     saved_folder = 'pred_multi_engine'
-
-    # 开始处理
-    process_folders(root_dir, folder_list, saved_folder=saved_folder, engine=engine, request_config=request_config)
-
+    selection_param = [0.5, 100]  # 对第一个数据集处理50%的图片，第二个数据集处理100张图片     # selection_param = 0.25  # 或者对所有数据集处理25%的图片 
+     # 设置随机种子     
+    seed = 42 
+     # 开始处理     
+    process_folders(root_dir, folder_list, saved_folder=saved_folder, engine=engine, request_config=request_config, selection_param=selection_param, seed=seed) 
     print('Processing completed.')
