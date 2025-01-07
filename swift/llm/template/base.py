@@ -237,72 +237,111 @@ class Template(ProcessorMixin):
         plt.savefig(save_path, dpi=300)  # Save with high resolution
         plt.close()  # Close the figure to free memory
 
-            
-            
-    def _augment(self, inputs, enable_augmentation=False):
-        """
-        目标检测数据增强
+def _augment(self, inputs, enable_augmentation=Ture):
+    """
+    目标检测数据增强
+    Args:
+        inputs: 输入的目标检测数据，包括图像和边界框。
+        enable_augmentation: 是否启用数据增强 (默认为 True)。
+    """
+    # 获取原始图像和边界框
+    image = np.array(inputs.images[0])  # Convert PIL Image to NumPy array
+    bboxes = inputs.bbox  # YOLO format
+    img_height, img_width = image.shape[:2]
 
-        Args:
-            inputs: 输入的目标检测数据，包括图像和边界框。
-            enable_augmentation: 是否启用数据增强 (默认为 True)。
-        """
-        # 获取原始图像和边界框
-        image = np.array(inputs.images[0])  # Convert PIL Image to NumPy array
-        bboxes = inputs.bbox  # YOLO format
-        img_height, img_width = image.shape[:2]
-        # 如果关闭数据增强，仅完成必要的赋值操作
-        if not enable_augmentation:
-            print("Data augmentation is disabled. Processing original inputs.")
-            
-            # 原始图像尺寸
-            
-
-            # 将 YOLO 格式的边界框转换为 Pascal VOC 格式
-            pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
-
-            # 更新 inputs 的属性
-            inputs.images = [Image.fromarray(image)]  # 保持图像不变
-            inputs.bbox = pascal_bboxes  # 原始边界框 (Pascal VOC 格式)
-            inputs.bbox_names = labels  # 原始类别标签
-            inputs.unique_bbox_names = list(set(labels))  # 去重后的类别标签
-            return
-
-        # 定义增强管道
-        transform = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.2),
-            A.RandomRotate90(p=0.5),
-            A.RandomBrightnessContrast(p=0.2),
-            A.HueSaturationValue(p=0.2),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, border_mode=0, p=0.5),
-            A.CoarseDropout(num_holes_range=(3, 6), hole_height_range=(10, 20), hole_width_range=(10, 20),
-                            fill_value=0, p=0.4)
-        ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))
-
-        # 如果没有边界框，处理负样本
-        if not bboxes:
-            augmented = transform(image=image, bboxes=[], class_labels=[])
-            inputs.images = [Image.fromarray(augmented['image'])]
-            inputs.bbox = []
-            inputs.bbox_names = []
-            inputs.unique_bbox_names = []
-            return
-
-
-       
+    # 如果关闭数据增强，仅完成必要的赋值操作
+    if not enable_augmentation:
+        print("Data augmentation is disabled. Processing original inputs.")
 
         # 将 YOLO 格式的边界框转换为 Pascal VOC 格式
         pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
+        # 验证边界框有效性
+        pascal_bboxes, labels = self.validate_bboxes(pascal_bboxes, labels, img_width, img_height)
 
-        # 应用增强
-        augmented = transform(image=image, bboxes=pascal_bboxes, class_labels=labels)
-        # self._visualize_augmentation(image, pascal_bboxes, labels, augmented['image'], augmented['bboxes'], augmented['class_labels'])
+        # 如果没有有效边界框
+        if not pascal_bboxes:
+            inputs.images = [Image.fromarray(image)]  # 保持原图像不变
+            inputs.bbox = []  # 无边界框
+            inputs.bbox_names = []  # 无类别标签
+            inputs.unique_bbox_names = []  # 无类别标签
+            return
+
         # 更新 inputs 的属性
-        inputs.images = [Image.fromarray(augmented['image'])]  # 增强后的图像
-        inputs.bbox = augmented['bboxes']  # 增强后的边界框 (Pascal VOC 格式)
-        inputs.bbox_names = augmented['class_labels']  # 增强后的类别标签
-        inputs.unique_bbox_names = list(set(augmented['class_labels']))  # 去重后的类别标签
+        inputs.images = [Image.fromarray(image)]  # 保持图像不变
+        inputs.bbox = pascal_bboxes  # 原始边界框 (Pascal VOC 格式)
+        inputs.bbox_names = labels  # 原始类别标签
+        inputs.unique_bbox_names = list(set(labels))  # 去重后的类别标签
+        return
+
+    # 定义增强管道
+    transform = A.Compose([
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.2),
+        A.RandomRotate90(p=0.5),
+        A.RandomBrightnessContrast(p=0.2),
+        A.HueSaturationValue(p=0.2),
+        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, border_mode=0, p=0.5),
+        A.CoarseDropout(num_holes_range=(3, 6), hole_height_range=(10, 20), hole_width_range=(10, 20),
+                        fill_value=0, p=0.4)
+    ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))
+
+    # 如果没有边界框，处理负样本
+    if not bboxes:
+        augmented = transform(image=image, bboxes=[], class_labels=[])
+        inputs.images = [Image.fromarray(augmented['image'])]
+        inputs.bbox = []
+        inputs.bbox_names = []
+        inputs.unique_bbox_names = []
+        return
+
+    # 将 YOLO 格式的边界框转换为 Pascal VOC 格式
+    pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
+
+    # 验证边界框有效性
+    pascal_bboxes, labels = self.validate_bboxes(pascal_bboxes, labels, img_width, img_height)
+
+    # 如果没有有效边界框
+    if not pascal_bboxes:
+        augmented = transform(image=image, bboxes=[], class_labels=[])
+        inputs.images = [Image.fromarray(augmented['image'])]
+        inputs.bbox = []
+        inputs.bbox_names = []
+        inputs.unique_bbox_names = []
+        return
+
+    # 数据增强
+    augmented = transform(image=image, bboxes=pascal_bboxes, class_labels=labels)
+
+    # 更新 inputs 的属性
+    inputs.images = [Image.fromarray(augmented['image'])]
+    inputs.bbox = augmented['bboxes']  # 增强后的边界框 (Pascal VOC 格式)
+    inputs.bbox_names = augmented['class_labels']  # 增强后的类别标签
+    inputs.unique_bbox_names = list(set(augmented['class_labels']))  # 去重后的类别标签
+
+def validate_bboxes(self, bboxes, labels, img_width, img_height):
+    """
+    验证边界框的有效性，修正无效边界框
+    """
+    valid_bboxes = []
+    valid_labels = []
+
+    for bbox, label in zip(bboxes, labels):
+        x_min, y_min, x_max, y_max = bbox
+
+        # 修正越界的边界框
+        x_min = max(0, min(x_min, img_width - 1))
+        y_min = max(0, min(y_min, img_height - 1))
+        x_max = max(0, min(x_max, img_width - 1))
+        y_max = max(0, min(y_max, img_height - 1))
+
+        # 跳过无效边界框
+        if x_max > x_min and y_max > y_min:
+            valid_bboxes.append([x_min, y_min, x_max, y_max])
+            valid_labels.append(label)
+
+    return valid_bboxes, valid_labels
+            
+            
 
   
     def _generate_message(self, inputs):
