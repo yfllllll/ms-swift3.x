@@ -1,11 +1,12 @@
-adapters=/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_agu/checkpoint-916
+adapters=/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_e10_n_aug/checkpoint-9160
 mergeed=${adapters}-merged
-output_dir=qwen7b-GPTQ-Int4
+output_dir=${adapters}-qwen7b-GPTQ-Int4
+export OMP_NUM_THREADS=14 
+export CUDA_VISIBLE_DEVICES=0 
+export MAX_PIXELS=921600 
 swift export \
     --adapters ${adapters} \
     --merge_lora true
-OMP_NUM_THREADS=14 \
-CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model ${mergeed} \
     --dataset ../output.jsonl \

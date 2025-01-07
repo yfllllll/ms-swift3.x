@@ -1,7 +1,10 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 os.environ['MAX_PIXELS'] = '921600'
 import torch
+# 启用 TF32 和 CUDNN 自动优化
+#torch.backends.cuda.matmul.allow_tf32 = True  # 启用 TensorFloat32 加速
+#torch.backends.cudnn.benchmark = True    
 import json
 import re
 import yaml
@@ -50,12 +53,12 @@ def initialize_engine(engine_type='pt', model_id_or_path=None):
             #     print(f"Warning: args.json not found in {model_id_or_path}")
         # 添加其他 PtEngine 参数
         pt_engine_kwargs['max_batch_size'] = 8
-        pt_engine_kwargs['torch_dtype'] =torch.float16
+        #pt_engine_kwargs['torch_dtype'] =torch.float16
         # 初始化 PtEngine
         engine = PtEngine(model_id_or_path, **pt_engine_kwargs)
 
     elif engine_type == 'vllm':
-        engine = VllmEngine(model_id_or_path, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
+        engine = VllmEngine(model_id_or_path, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2},model_type='qwen2_vl')
     elif engine_type == 'lmdeploy':
         engine = LmdeployEngine(model_id_or_path, vision_batch_size=8)
     else:
@@ -224,16 +227,17 @@ def process_folders(root_dir, folder_list, saved_folder='pred', engine=None, req
 if __name__ == "__main__":
     # 用户选择推理引擎
     engine_type = 'pt'
-    model_id_or_path = '/root/autodl-tmp/qwen7b-GPTQ-Int4'
+    model_id_or_path = '/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_agu/qwen7b-GPTQ-Int4'
+    #'/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_e10_agu/checkpoint-9160-qwen7b-GPTQ-Int4'
 
     # 初始化推理引擎
     engine = initialize_engine(engine_type, model_id_or_path)
     request_config = RequestConfig(max_tokens=256, temperature=0)
 
     # 设置路径
-    root_dir = "/ultralytics-main/datasets/VisDrone"
+    root_dir = "/data1/lyf/datasets/VisDrone"
     folder_list = ["VisDrone2019-DET-test-dev"]
-    saved_folder = 'pred_multi_engine'
+    saved_folder = 'pred_multi_engine_atest'
 
     # 开始处理
     process_folders(root_dir, folder_list, saved_folder=saved_folder, engine=engine, request_config=request_config)

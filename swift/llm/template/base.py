@@ -239,7 +239,7 @@ class Template(ProcessorMixin):
 
             
             
-    def _augment(self, inputs, enable_augmentation=True):
+    def _augment(self, inputs, enable_augmentation=False):
         """
         目标检测数据增强
 

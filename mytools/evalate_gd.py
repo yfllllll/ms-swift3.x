@@ -119,18 +119,18 @@ def evaluate_predictions(dataset_name, folder_list, root_dir, iou_threshold=0.5,
     print("\nEvaluation Report:")
     results.print_report()
 
-    session = fo.launch_app(dataset)
+    session = fo.launch_app(dataset,address="0.0.0.0", port=8002)
     session.wait()
 
     return results
 
 
-root_dir = "/ultralytics-main/datasets/VisDrone"
+root_dir = "/data1/lyf/datasets/VisDrone"
 folder_list = ["VisDrone2019-DET-test-dev"]
-saved_folder = 'pred_multi_engine'
+saved_folder = 'pred_multi_engine_aug'
 
 results = evaluate_predictions(
-    dataset_name="my_combined_dataset",
+    dataset_name="my_combined",
     folder_list=folder_list,
     root_dir=root_dir,
     iou_threshold=0.5,
