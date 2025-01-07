@@ -154,7 +154,6 @@ def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_c
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
-
     # 确定处理的图片数量
     if isinstance(selection_param, float) and 0 < selection_param <= 1:
         # 如果是浮点数且在 (0, 1] 之间，按百分比处理
@@ -205,7 +204,7 @@ if __name__ == "__main__":
     root_dir = "/data1/lyf/datasets/VisDrone"
     folder_list = ["VisDrone2019-DET-test-dev"]
     saved_folder = 'pred_multi_engine'
-    selection_param = [0.5, 100]  # 对第一个数据集处理50%的图片，第二个数据集处理100张图片     # selection_param = 0.25  # 或者对所有数据集处理25%的图片 
+    selection_param = 100  # 对第一个数据集处理50%的图片，第二个数据集处理100张图片     # selection_param = 0.25  # 或者对所有数据集处理25%的图片 
      # 设置随机种子     
     seed = 42 
      # 开始处理     
