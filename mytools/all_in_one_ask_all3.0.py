@@ -62,7 +62,9 @@ def initialize_engine(engine_type='pt', model_id_or_path=None):
             #     print(f"Warning: args.json not found in {model_id_or_path}")
         # 添加其他 PtEngine 参数
         pt_engine_kwargs['max_batch_size'] = 8
+
         pt_engine_kwargs['torch_dtype'] =torch.float16
+
         # 初始化 PtEngine
         engine = PtEngine(model_id_or_path, **pt_engine_kwargs)
 
