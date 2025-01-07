@@ -237,12 +237,9 @@ class Template(ProcessorMixin):
         plt.savefig(save_path, dpi=300)  # Save with high resolution
         plt.close()  # Close the figure to free memory
 
-            
-            
-    def _augment(self, inputs, enable_augmentation=True):
+    def _augment(self, inputs, enable_augmentation=Ture):
         """
         目标检测数据增强
-
         Args:
             inputs: 输入的目标检测数据，包括图像和边界框。
             enable_augmentation: 是否启用数据增强 (默认为 True)。
@@ -251,15 +248,23 @@ class Template(ProcessorMixin):
         image = np.array(inputs.images[0])  # Convert PIL Image to NumPy array
         bboxes = inputs.bbox  # YOLO format
         img_height, img_width = image.shape[:2]
+
         # 如果关闭数据增强，仅完成必要的赋值操作
         if not enable_augmentation:
             print("Data augmentation is disabled. Processing original inputs.")
-            
-            # 原始图像尺寸
-            
 
             # 将 YOLO 格式的边界框转换为 Pascal VOC 格式
             pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
+            # 验证边界框有效性
+            pascal_bboxes, labels = self.validate_bboxes(pascal_bboxes, labels, img_width, img_height)
+
+            # 如果没有有效边界框
+            if not pascal_bboxes:
+                inputs.images = [Image.fromarray(image)]  # 保持原图像不变
+                inputs.bbox = []  # 无边界框
+                inputs.bbox_names = []  # 无类别标签
+                inputs.unique_bbox_names = []  # 无类别标签
+                return
 
             # 更新 inputs 的属性
             inputs.images = [Image.fromarray(image)]  # 保持图像不变
@@ -289,22 +294,53 @@ class Template(ProcessorMixin):
             inputs.unique_bbox_names = []
             return
 
-
-       
-
         # 将 YOLO 格式的边界框转换为 Pascal VOC 格式
         pascal_bboxes, labels = self.yolo_to_pascal_voc(bboxes, img_width, img_height)
 
-        # 应用增强
+        # 验证边界框有效性
+        pascal_bboxes, labels = self.validate_bboxes(pascal_bboxes, labels, img_width, img_height)
+
+        # 如果没有有效边界框
+        if not pascal_bboxes:
+            augmented = transform(image=image, bboxes=[], class_labels=[])
+            inputs.images = [Image.fromarray(augmented['image'])]
+            inputs.bbox = []
+            inputs.bbox_names = []
+            inputs.unique_bbox_names = []
+            return
+
+        # 数据增强
         augmented = transform(image=image, bboxes=pascal_bboxes, class_labels=labels)
-        # self._visualize_augmentation(image, pascal_bboxes, labels, augmented['image'], augmented['bboxes'], augmented['class_labels'])
+
         # 更新 inputs 的属性
-        inputs.images = [Image.fromarray(augmented['image'])]  # 增强后的图像
+        inputs.images = [Image.fromarray(augmented['image'])]
         inputs.bbox = augmented['bboxes']  # 增强后的边界框 (Pascal VOC 格式)
         inputs.bbox_names = augmented['class_labels']  # 增强后的类别标签
         inputs.unique_bbox_names = list(set(augmented['class_labels']))  # 去重后的类别标签
 
-  
+    def validate_bboxes(self, bboxes, labels, img_width, img_height):
+        """
+        验证边界框的有效性，修正无效边界框
+        """
+        valid_bboxes = []
+        valid_labels = []
+
+        for bbox, label in zip(bboxes, labels):
+            x_min, y_min, x_max, y_max = bbox
+
+            # 修正越界的边界框
+            x_min = max(0, min(x_min, img_width - 1))
+            y_min = max(0, min(y_min, img_height - 1))
+            x_max = max(0, min(x_max, img_width - 1))
+            y_max = max(0, min(y_max, img_height - 1))
+
+            # 跳过无效边界框
+            if x_max > x_min and y_max > y_min:
+                valid_bboxes.append([x_min, y_min, x_max, y_max])
+                valid_labels.append(label)
+
+        return valid_bboxes, valid_labels
+                
     def _generate_message(self, inputs):
         '''将目标检测数据转换为llm可识别的格式'''
         messages = []
