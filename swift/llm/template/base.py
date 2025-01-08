@@ -280,7 +280,7 @@ class Template(ProcessorMixin):
             A.RandomRotate90(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
             A.HueSaturationValue(p=0.2),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, border_mode=0, p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.3, rotate_limit=15, border_mode=0, p=0.7),
             A.CoarseDropout(num_holes_range=(3, 6), hole_height_range=(10, 20), hole_width_range=(10, 20),
                             fill_value=0, p=0.4)
         ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))

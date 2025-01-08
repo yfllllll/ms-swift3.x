@@ -34,7 +34,7 @@ def write_to_jsonl(image_label_pairs, classes, output_path):
     """
     将图像和标注文件路径以及类别名列表按要求格式写入jsonl文件
     """
-    with open(output_path, 'w') as jsonl_file:
+    with open(output_path, 'w', encoding='utf-8') as jsonl_file:  # 指定utf-8编码
         for image_path, label_path in image_label_pairs:
             record = {
                 "image": os.path.abspath(image_path),
@@ -42,7 +42,7 @@ def write_to_jsonl(image_label_pairs, classes, output_path):
                 "class_names": classes,
                 "yolo": 1
             }
-            jsonl_file.write(json.dumps(record) + '\n')
+            jsonl_file.write(json.dumps(record, ensure_ascii=False) + '\n')  # 确保中文不会转义
 
 def split_data(image_label_pairs, train_ratio=0.8):
     """
@@ -55,7 +55,7 @@ def split_data(image_label_pairs, train_ratio=0.8):
     return train_pairs, val_pairs
 
 if __name__ == "__main__":
-    dataset_dir = "/ultralytics-main/datasets/VisDrone/VisDrone2019-DET-train"  # 替换为你的数据集实际目录路径
+    dataset_dir = "/data1/lyf/formate_t/coco_format/cheren"  # 替换为你的数据集实际目录路径
     yaml_path = os.path.join(dataset_dir, "dataset.yaml")
     classes = get_classes_from_yaml(yaml_path)
 
