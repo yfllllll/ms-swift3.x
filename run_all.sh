@@ -9,7 +9,8 @@ swift sft \
   --num_train_epochs 10 \
   --strict False \
   --per_device_train_batch_size 1 \
-  --dataset output.jsonl
+  --dataset train.jsonl \
+  --val_dataset val.jsonl
 
 
   
