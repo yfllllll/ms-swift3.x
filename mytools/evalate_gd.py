@@ -72,12 +72,16 @@ def evaluate_predictions(dataset_name, folder_list, root_dir, iou_threshold=0.5,
         pred_dir = os.path.join(root_dir, folder, saved_folder)
         gt_dir = os.path.join(root_dir, folder, "labels")
         images_dir = os.path.join(root_dir, folder, "images")
-
+        input_folder = os.path.join(root_dir, folder)
         if not os.path.exists(pred_dir) or not os.path.exists(gt_dir) or not os.path.exists(images_dir):
             print(f"Warning: Missing required folders in {folder}. Skipping...")
             continue
 
-        yaml_path = os.path.join(root_dir, folder, "dataset_zn.yaml")
+        
+        yaml_files = ['data.yaml', 'dataset.yaml']
+        yaml_path = next((os.path.join(input_folder, f) for f in yaml_files if os.path.exists(os.path.join(input_folder, f))), None)
+    
+        
         if os.path.exists(yaml_path):
             with open(yaml_path, "r") as f:
                 data_config = yaml.safe_load(f)
@@ -125,9 +129,9 @@ def evaluate_predictions(dataset_name, folder_list, root_dir, iou_threshold=0.5,
     return results
 
 
-root_dir = "/data1/lyf/datasets/VisDrone"
-folder_list = ["VisDrone2019-DET-test-dev"]
-saved_folder = 'pred_multi_engine_aug'
+root_dir = "/data1/lyf/formate_t/coco_format"
+folder_list = ["cheren"]
+saved_folder = 'pred_multi_engine_aug/val'
 
 results = evaluate_predictions(
     dataset_name="my_combined",

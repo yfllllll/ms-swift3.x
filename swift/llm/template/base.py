@@ -237,7 +237,7 @@ class Template(ProcessorMixin):
         plt.savefig(save_path, dpi=300)  # Save with high resolution
         plt.close()  # Close the figure to free memory
 
-    def _augment(self, inputs, enable_augmentation=True):
+    def _augment(self, inputs, enable_augmentation=False):
         """
         目标检测数据增强
         Args:

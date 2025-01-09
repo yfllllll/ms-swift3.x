@@ -25,7 +25,7 @@ def save_yolo_format(predictions, output_path, class_id, image_width, image_heig
             height = (y2 - y1) / image_height
             f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
 # 初始化推理引擎函数
-def initialize_engine_quant(engine_type='pt', model_id_or_path=None):
+def initialize_engine(engine_type='pt', model_id_or_path=None):
     if engine_type == 'pt':
         # 初始化参数字典
         pt_engine_kwargs = {}
@@ -135,14 +135,14 @@ def process_image(image_path, class_names, output_dir, engine, request_config):
 
 
 
-# 修改后的处理单个文件夹函数，支持选择处理train, val, test
-def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_config=None, selection_param=1.0, seed=None, dataset_split="all"):
+# 修改后的处理单个文件夹函数，支持传入单一参数，按百分比或影像个数处理
+def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_config=None, selection_param=1.0, seed=None):
     input_folder = os.path.join(root_dir, folder)
     
     yaml_files = ['data.yaml', 'dataset.yaml']
     yaml_path = next((os.path.join(input_folder, f) for f in yaml_files if os.path.exists(os.path.join(input_folder, f))), None)
     if not os.path.exists(yaml_path):
-        raise FileNotFoundError(f"data.yaml not found in {input_folder}")
+        raise FileNotFoundError(f"data_zn.yaml not found in {input_folder}")
     
     with open(yaml_path, 'r') as yaml_file:
         data_info = yaml.safe_load(yaml_file)
@@ -152,33 +152,13 @@ def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_c
     if not os.path.exists(images_folder):
         raise FileNotFoundError(f"Images folder not found: {images_folder}")
 
-    # 根据 dataset_split 来选择处理哪些数据集
-    split_folders = {'train': 'train.jsonl', 'val': 'val.jsonl', 'test': 'test.jsonl'}
+    # 获取所有图片文件
+    image_files = [os.path.join(images_folder, f) for f in os.listdir(images_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
     
-    # 根据 dataset_split 参数决定要处理的数据
-    split_file = split_folders.get(dataset_split, None)
-    
-    if dataset_split != "all":
-        # 如果选择了 train, val 或 test，检查是否有对应的 jsonl 文件
-        if split_file and os.path.exists(os.path.join(input_folder, split_file)):
-            print(f"Processing {dataset_split} dataset...")
-            with open(os.path.join(input_folder, split_file), 'r') as jsonl_file:
-                lines = jsonl_file.readlines()
-            
-            image_files = [json.loads(line.strip())["image"] for line in lines]
-        else:
-            print(f"No {dataset_split}.jsonl file found, skipping {dataset_split} dataset.")
-            return
-    else:
-        # 如果是处理所有数据集
-        # 获取所有图片文件
-        image_files = [os.path.join(images_folder, f) for f in os.listdir(images_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-
     # 处理随机种子
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
-
     # 确定处理的图片数量
     if isinstance(selection_param, float) and 0 < selection_param <= 1:
         # 如果是浮点数且在 (0, 1] 之间，按百分比处理
@@ -191,44 +171,42 @@ def process_folder(root_dir, folder, saved_folder='pred', engine=None, request_c
 
     selected_images = random.sample(image_files, image_count)
     
-    # 保存结果的文件夹
-    pred_folder = os.path.join(input_folder, saved_folder, dataset_split)
+    pred_folder = os.path.join(input_folder, saved_folder)
     os.makedirs(pred_folder, exist_ok=True)
 
     # 逐个处理选中的图像
-    for image_path in tqdm(selected_images, desc=f"Processing {dataset_split} dataset", unit="image"):
+    for image_path in tqdm(selected_images, desc=f"Processing folder: {folder}", unit="image"):
         process_image(image_path, class_names, pred_folder, engine, request_config)
 
     print(f"All predictions saved in: {pred_folder}")
 
 
 # 修改后的处理文件夹列表函数，支持灵活设置百分比或影像个数
-def process_folders(root_dir, folder_list, saved_folder='pred', engine=None, request_config=None, selection_param=1.0, seed=None, dataset_split="all"):
+def process_folders(root_dir, folder_list, saved_folder='pred', engine=None, request_config=None, selection_param=1.0, seed=None):
     for i, folder in enumerate(folder_list):
         print(f"Processing folder: {folder}")
 
+        # 如果传入的是一个列表（每个数据集不同的参数）
+        if isinstance(selection_param, list):
+            folder_selection_param = selection_param[i]  # 获取该数据集的参数
+        else:
+            folder_selection_param = selection_param  # 对所有数据集都应用相同的参数
+        
         try:
             process_folder(root_dir, folder, saved_folder=saved_folder, engine=engine, request_config=request_config, 
-                           selection_param=selection_param, seed=seed, dataset_split=dataset_split)
+                           selection_param=folder_selection_param, seed=seed)
         except Exception as e:
             print(f"Error processing folder {folder}: {e}")
-
 
 # 主程序入口
 if __name__ == "__main__":
     # 用户选择推理引擎
     engine_type = 'pt'
-    
-    last_model_checkpoint = '/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/v4-20250108-150848/checkpoint-4732'
+    model_id_or_path = '/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/v4-20250108-150848/checkpoint-4732'
     #'/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_e10_n_aug/checkpoint-9160-qwen7b-GPTQ-Int4'
     # 初始化推理引擎
-    if('Int4') in last_model_checkpoint:
-        engine = initialize_engine_quant(engine_type, last_model_checkpoint)# 用于加载量化过的模型
-    else:
-        # Get model and template, and load LoRA weights.
-        model_id_or_path = 'qwen/Qwen2-VL-7B-Instruct'
-        engine = PtEngine(model_id_or_path, adapters=[last_model_checkpoint])
-    request_config = RequestConfig(max_tokens=4096, temperature=0)
+    engine = initialize_engine(engine_type, model_id_or_path)
+    request_config = RequestConfig(max_tokens=256, temperature=0)
     
     # 设置路径
     root_dir = "/data1/lyf/formate_t/coco_format"
@@ -238,7 +216,7 @@ if __name__ == "__main__":
     # 选择处理哪些数据集: "train", "val", "test", 或 "all"
     dataset_split = "val"  # 可以设置为 "train", "val", "test", 或 "all"
     
-    selection_param = 1.  # 对第一个数据集处理50%的图片，第二个数据集处理100张图片
+    selection_param = 100  # 对第一个数据集处理50%的图片，第二个数据集处理100张图片
     seed = 42 
     
     # 开始处理
