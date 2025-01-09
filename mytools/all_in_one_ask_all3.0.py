@@ -81,15 +81,27 @@ def initialize_engine_quant(engine_type='pt', model_id_or_path=None):
 
 # 解析 response 中的 bbox 和类别
 def parse_response_boxes(response, scale_x, scale_y):
+    """
+    解析模型返回的bbox字符串，返回仅包含合格框的列表。
+    跳过无效的框（坐标无效）和未知类别的框。
+    """
     box_pattern = r"<\|object_ref_start\|\>(.*?)<\|object_ref_end\|\><\|box_start\|\>\((\d+),(\d+)\),\((\d+),(\d+)\)<\|box_end\|\>"
     boxes = []
     matches = re.findall(box_pattern, response)
     for match in matches:
         class_name, x1, y1, x2, y2 = match
-        x1 = int(int(x1) * scale_x)
-        y1 = int(int(y1) * scale_y)
-        x2 = int(int(x2) * scale_x)
-        y2 = int(int(y2) * scale_y)
+        x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
+        
+        # 检查坐标是否有效
+        if x1 >= x2 or y1 >= y2:
+            print(f"Skipping invalid box: ({x1}, {y1}), ({x2}, {y2})")
+            continue
+        # 缩放坐标
+        x1 = int(x1 * scale_x)
+        y1 = int(y1 * scale_y)
+        x2 = int(x2 * scale_x)
+        y2 = int(y2 * scale_y)
+
         boxes.append((class_name, [x1, y1, x2, y2]))
     return boxes
 
@@ -125,9 +137,19 @@ def process_image(image_path, class_names, output_dir, engine, request_config):
 
     # 解析检测结果
     parsed_boxes = parse_response_boxes(response_text, scale_x, scale_y)
-
-    # 保存为 YOLO 格式
+    
+    if not parsed_boxes:
+        # 如果没有检测框，生成一个空文件
+        open(output_file, 'w').close()
+        print(f"No detections for {image_path}. Created empty file: {output_file}")
+        return
+    
     for class_name, box in parsed_boxes:
+        # 检查类别是否在 class_names 中，防止出现错误
+        if class_name not in class_names.values():
+            print(f"Skipping unknown class: {class_name}")
+            continue
+
         class_id = list(class_names.values()).index(class_name)  # 获取类别对应的 ID
         save_yolo_format([box], output_file, class_id, image_width, image_height, append=True)
 
