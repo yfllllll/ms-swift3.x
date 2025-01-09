@@ -237,7 +237,7 @@ class Template(ProcessorMixin):
         plt.savefig(save_path, dpi=300)  # Save with high resolution
         plt.close()  # Close the figure to free memory
 
-    def _augment(self, inputs, enable_augmentation=False):
+    def _augment(self, inputs, enable_augmentation=True):
         """
         目标检测数据增强
         Args:
@@ -280,9 +280,15 @@ class Template(ProcessorMixin):
             A.RandomRotate90(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
             A.HueSaturationValue(p=0.2),
+            # 使用 A.OneOf 随机选择裁剪操作
+            A.OneOf([
+                A.RandomCropFromBorders(crop_left=0.5, crop_right=0.2, crop_top=0.2, crop_bottom=0.5)
+                A.AtLeastOneBBoxRandomCrop(width=960, height=960, p=1),  # 至少保留一个目标框的裁剪
+                A.BBoxSafeRandomCrop(p=1)  # 确保目标框在裁剪区域内
+            ], p=0.6),  # 设置 p=1 确保会选择一个裁剪变换
             A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.3, rotate_limit=15, border_mode=0, p=0.7),
             A.CoarseDropout(num_holes_range=(3, 6), hole_height_range=(10, 20), hole_width_range=(10, 20),
-                            fill_value=0, p=0.4)
+                            fill_value=0, p=0.4),
         ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))
 
         # 如果没有边界框，处理负样本
