@@ -221,5 +221,5 @@ img_dir_labels = {
     },
 }
 
-output_dir = '/data1/lyf/ms-swift/dataset/fromVary_3.0'  # 修改为实际输出路径
+output_dir = '/data1/lyf/my_ms_swift/dataset/fromVary_3.0'  # 修改为实际输出路径
 process_dataset_v3(img_dir_labels, output_dir, split_ratio=0.95)
