@@ -282,7 +282,7 @@ class Template(ProcessorMixin):
             A.HueSaturationValue(p=0.2),
             # 使用 A.OneOf 随机选择裁剪操作
             A.OneOf([
-                A.RandomCropFromBorders(crop_left=0.5, crop_right=0.2, crop_top=0.2, crop_bottom=0.5)
+                A.RandomCropFromBorders(crop_left=0.5, crop_right=0.2, crop_top=0.2, crop_bottom=0.5),
                 A.AtLeastOneBBoxRandomCrop(width=960, height=960, p=1),  # 至少保留一个目标框的裁剪
                 A.BBoxSafeRandomCrop(p=1)  # 确保目标框在裁剪区域内
             ], p=0.6),  # 设置 p=1 确保会选择一个裁剪变换

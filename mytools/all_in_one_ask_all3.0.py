@@ -241,7 +241,7 @@ if __name__ == "__main__":
     # 用户选择推理引擎
     engine_type = 'pt'
     
-    last_model_checkpoint = '/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/v4-20250108-150848/checkpoint-4732'
+    last_model_checkpoint = '/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/v5-20250108-231514/checkpoint-4732'
     #'/data1/lyf/my_ms_swift/output/Qwen2-VL-7B-Instruct/7b_e10_n_aug/checkpoint-9160-qwen7b-GPTQ-Int4'
     # 初始化推理引擎
     if('Int4') in last_model_checkpoint:
@@ -255,7 +255,7 @@ if __name__ == "__main__":
     # 设置路径
     root_dir = "/data1/lyf/formate_t/coco_format"
     folder_list = ["cheren"]
-    saved_folder = 'pred_multi_engine_aug'
+    saved_folder = 'pred_multi_engine_n_aug'
     
     # 选择处理哪些数据集: "train", "val", "test", 或 "all"
     dataset_split = "val"  # 可以设置为 "train", "val", "test", 或 "all"
